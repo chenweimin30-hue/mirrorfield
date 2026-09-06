@@ -22,6 +22,11 @@
   .stat span{color:#ffd54f;font-weight:700;font-size:24px;margin:0 4px;}
   #over h1{color:#ef5350;letter-spacing:3px;}
   .tip{margin-top:14px;font-size:12px;opacity:.6;}
+  .legend{display:flex;gap:10px;font-size:13px;margin:0 0 14px;flex-wrap:wrap;justify-content:center;max-width:520px;}
+  .legend span{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);padding:4px 12px;border-radius:20px;}
+  .legend i{width:9px;height:9px;border-radius:50%;display:inline-block;}
+  .best{font-size:14px;margin-bottom:16px;opacity:.9;}
+  .best b{color:#ffd54f;font-size:20px;}
 </style>
 </head>
 <body>
@@ -31,8 +36,15 @@
 
     <div id="menu" class="overlay">
       <h1>镜 原<small>MIRRORFIELD</small></h1>
-      <div class="desc">草原上竖立着无数面镜子。在镜林中找到对方并开枪——<br>子弹会沿镜面反弹，你可以隔着镜林狙击看不见的敌人。<br>但小心：红色对手同样会用镜子狙击你。</div>
-      <div class="keys"><b>W A S D</b> 移动 &nbsp; <b>鼠标</b> 瞄准 &nbsp; <b>左键/空格</b> 射击<br><b>P</b> 暂停 &nbsp; <b>M</b> 静音 &nbsp; 白色虚线为子弹反弹预测线</div>
+      <div class="desc">草原上竖立着无数面镜子。在镜林中找到对方并开枪——<br>子弹会沿镜面反弹，你可以隔着镜林狙击看不见的敌人。<br>拾取道具、冲刺走位、打碎挡路的镜子。红色对手会用镜子狙击你，<br>而且它会随你的击杀数越来越强。</div>
+      <div class="keys"><b>W A S D</b> 移动 &nbsp; <b>鼠标</b> 瞄准 &nbsp; <b>左键/空格</b> 射击 &nbsp; <b>Shift</b> 冲刺<br><b>P</b> 暂停 &nbsp; <b>M</b> 静音 &nbsp; 白色虚线为子弹反弹预测线</div>
+      <div class="legend">
+        <span><i style="background:#ff7043"></i>生命 +40</span>
+        <span><i style="background:#ffca28"></i>三连发 10s</span>
+        <span><i style="background:#29b6f6"></i>护盾 8s</span>
+        <span><i style="background:#ab47bc"></i>穿镜弹 6s</span>
+      </div>
+      <div class="best" id="menuBest"></div>
       <button id="btnStart">开 始 对 决</button>
       <div class="tip">按回车键也可开始</div>
     </div>
@@ -40,6 +52,7 @@
     <div id="over" class="overlay hidden">
       <h1>你倒在了镜林中</h1>
       <div class="stat">击杀敌人 <span id="stKills">0</span> 次 &nbsp;·&nbsp; 存活 <span id="stTime">0</span> 秒</div>
+      <div class="stat">最终积分 <span id="stScore">0</span> 分</div>
       <button id="btnRetry">再 来 一 局</button>
       <div class="tip">按回车键重开</div>
     </div>
@@ -117,8 +130,23 @@ let state = 'menu'; // menu | playing | paused | over
 let player = null, enemy = null;
 let mirrors = [], bullets = [], particles = [], floats = [];
 let kills = 0, surviveT = 0, hurtFlash = 0, graceT = 0;
+let combo = 0, comboT = 0, score = 0, threat = 1, spawnT = 0;
+let powerups = [];
 const keys = {};
 const mouse = { x: W / 2, y: H / 2, down: false };
+
+// 最高分持久化
+let bestScore = 0, bestKills = 0, bestTime = 0;
+try {
+  const s = JSON.parse(localStorage.getItem('mirrorfield_best') || 'null');
+  if (s) { bestScore = s.score || 0; bestKills = s.kills || 0; bestTime = s.time || 0; }
+} catch (e) {}
+function refreshBestMenu() {
+  const el = document.getElementById('menuBest');
+  if (bestScore > 0) el.innerHTML = '历史最佳：<b>' + bestScore + '</b> 分 · ' + bestKills + ' 杀 · ' + bestTime + ' 秒';
+  else el.textContent = '';
+}
+refreshBestMenu();
 
 /* ---------- 地图生成 ---------- */
 function makeMirror(cx, cy, len, type) {
@@ -151,12 +179,64 @@ function genMirrors() {
 /* ---------- 角色与开局 ---------- */
 function resetGame() {
   genMirrors();
-  player = { x: 100, y: 100, r: 14, hp: 100, aim: 0, cool: 0, speed: 3.3, inv: 0 };
+  player = { x: 100, y: 100, r: 14, hp: 100, aim: 0, cool: 0, speed: 3.3, inv: 0,
+             dashCd: 0, dashT: 0, dashDx: 0, dashDy: 0,
+             triT: 0, shieldT: 0, pierceT: 0 };
   enemy = { x: W - 100, y: H - 100, r: 14, hp: 100, aim: 0, cool: 2, speed: 2.1,
             alive: true, respawn: 0, mode: 'wander', modeT: rnd(1, 2),
             tx: W / 2, ty: H / 2, gunFlash: 0, hitT: 0 };
-  bullets = []; particles = []; floats = [];
+  bullets = []; particles = []; floats = []; powerups = [];
   kills = 0; surviveT = 0; hurtFlash = 0; graceT = 3;
+  combo = 0; comboT = 0; score = 0; threat = 1; spawnT = 5;
+}
+
+/* ---------- 道具系统 ---------- */
+const PU_TYPES = [
+  { key: 'heal',   color: '#ff7043', label: '生命 +40',  dur: 0 },
+  { key: 'triple', color: '#ffca28', label: '三连发 10s', dur: 10 },
+  { key: 'shield', color: '#29b6f6', label: '护盾 8s',   dur: 8 },
+  { key: 'pierce', color: '#ab47bc', label: '穿镜弹 6s', dur: 6 },
+];
+function spawnPowerup() {
+  if (powerups.length >= 3) return;
+  let x, y, tries = 0;
+  do {
+    x = rnd(HEDGE + 60, W - HEDGE - 60); y = rnd(HEDGE + 60, H - HEDGE - 60);
+    tries++;
+  } while (tries < 50 && (dist2(x, y, player.x, player.y) < 130 * 130 ||
+           mirrors.some(m => { const c = closestOnSeg(x, y, m.x1, m.y1, m.x2, m.y2); return dist2(x, y, c.x, c.y) < 46 * 46; })));
+  const t = PU_TYPES[Math.floor(Math.random() * PU_TYPES.length)];
+  powerups.push({ x, y, r: 11, type: t.key, color: t.color, life: 700 });
+  spark(x, y, t.color, 8, 90);
+}
+function updatePowerups() {
+  spawnT -= 1 / 60;
+  if (spawnT <= 0) { spawnPowerup(); spawnT = rnd(7, 12); }
+  for (let i = powerups.length - 1; i >= 0; i--) {
+    const p = powerups[i];
+    p.life--;
+    if (p.life <= 0) { powerups.splice(i, 1); continue; }
+    // 拾取判定
+    if (dist2(p.x, p.y, player.x, player.y) < (p.r + player.r) ** 2) {
+      const meta = PU_TYPES.find(t => t.key === p.type);
+      if (p.type === 'heal') {
+        player.hp = Math.min(100, player.hp + 40);
+        floats.push({ x: player.x, y: player.y - 24, txt: '+40 生命', life: 60, color: '#ff7043' });
+      } else if (p.type === 'triple') {
+        player.triT = 10 * 60;
+        floats.push({ x: player.x, y: player.y - 24, txt: meta.label, life: 60, color: meta.color });
+      } else if (p.type === 'shield') {
+        player.shieldT = 8 * 60;
+        floats.push({ x: player.x, y: player.y - 24, txt: meta.label, life: 60, color: meta.color });
+      } else if (p.type === 'pierce') {
+        player.pierceT = 6 * 60;
+        floats.push({ x: player.x, y: player.y - 24, txt: meta.label, life: 60, color: meta.color });
+      }
+      spark(p.x, p.y, p.color, 14, 160);
+      beep(980, .12, 'sine', .14, 1400);
+      powerups.splice(i, 1);
+    }
+  }
 }
 
 /* ---------- 碰撞：圆推出镜面（胶囊近似） ---------- */
@@ -226,10 +306,19 @@ function fire(shooter, tx, ty, isPlayer) {
   const d = Math.hypot(tx - shooter.x, ty - shooter.y) || 1;
   const dx = (tx - shooter.x) / d, dy = (ty - shooter.y) / d;
   shooter.aim = Math.atan2(dy, dx);
-  const sp = isPlayer ? 9.5 : 7.2;
-  const mx = shooter.x + dx * (shooter.r + 7), my = shooter.y + dy * (shooter.r + 7);
-  bullets.push({ x: mx, y: my, vx: dx * sp, vy: dy * sp, r: BULLET_R,
-                 owner: isPlayer ? 'p' : 'e', bounces: 0, life: 600, trail: [] });
+  const sp = isPlayer ? 9.5 : 7.2 + threat * 0.35;
+  const mk = (ang) => {
+    const vx = Math.cos(ang) * sp, vy = Math.sin(ang) * sp;
+    bullets.push({ x: shooter.x + Math.cos(ang) * (shooter.r + 7), y: shooter.y + Math.sin(ang) * (shooter.r + 7),
+                   vx, vy, r: BULLET_R, owner: isPlayer ? 'p' : 'e', bounces: 0, life: 600, trail: [],
+                   pierce: isPlayer && player.pierceT > 0 });
+  };
+  if (isPlayer && player.triT > 0) { // 三连发扇形
+    const base = Math.atan2(dy, dx);
+    mk(base - 0.09); mk(base); mk(base + 0.09);
+  } else {
+    mk(Math.atan2(dy, dx));
+  }
   shooter.gunFlash = 3;
   beep(isPlayer ? 900 : 620, .07, 'square', .1, isPlayer ? 500 : 300);
 }
@@ -242,16 +331,30 @@ function updateBullets() {
     for (let s = 0; s < 3; s++) {
       b.x += b.vx / 3; b.y += b.vy / 3;
       // 镜面碰撞（胶囊判定）
-      for (const m of mirrors) {
+      for (let mi = mirrors.length - 1; mi >= 0; mi--) {
+        const m = mirrors[mi];
         const c = closestOnSeg(b.x, b.y, m.x1, m.y1, m.x2, m.y2);
         const d = Math.hypot(b.x - c.x, b.y - c.y), min = MIRROR_HALF + b.r;
         if (d < min) {
+          if (b.pierce) { // 穿镜弹：击碎镜子并直线前进
+            mirrors.splice(mi, 1);
+            spark(c.x, c.y, '#eceff1', 12, 180);
+            beep(1800, .1, 'triangle', .1, 700);
+            continue;
+          }
           const r = reflect(b.vx, b.vy, m);
           b.vx = r.x; b.vy = r.y;
           // 推出镜面
           if (d < 1e-4) { b.x += min; }
           else { b.x = c.x + (b.x - c.x) / d * (min + .5); b.y = c.y + (b.y - c.y) / d * (min + .5); }
           b.bounces++;
+          // 镜子受击掉耐久，3 次后碎裂
+          m.hp = (m.hp === undefined ? 3 : m.hp) - 1;
+          if (m.hp <= 0) {
+            mirrors.splice(mi, 1);
+            spark(c.x, c.y, '#cfd8dc', 16, 220);
+            beep(500, .18, 'sawtooth', .12, 140);
+          }
           spark(b.x, b.y, '#ffffff', 3, 60);
           beep(1400 + b.bounces * 120, .05, 'triangle', .07);
           break;
@@ -268,17 +371,41 @@ function updateBullets() {
       enemy.hp -= 34; enemy.hitT = 8; dead = true;
       spark(b.x, b.y, '#ef5350', 10, 140);
       beep(220, .12, 'sawtooth', .14);
+      if (b.bounces > 0) { // 镜杀奖励
+        const bonus = 50 * b.bounces;
+        score += bonus;
+        floats.push({ x: enemy.x, y: enemy.y - 36, txt: '镜杀 +' + bonus, life: 80, color: '#4fc3f7' });
+      }
       if (enemy.hp <= 0) {
         enemy.alive = false; enemy.respawn = 2; kills++;
+        // 连击：5 秒内再次击杀翻倍
+        comboT = 5;
+        combo++;
+        const gain = 100 * combo;
+        score += gain;
+        // 威胁升级：每 3 杀升 1 级（上限 7）
+        const newThreat = Math.min(7, 1 + Math.floor(kills / 3));
+        if (newThreat > threat) {
+          threat = newThreat;
+          floats.push({ x: W / 2, y: 110, txt: '⚠ 威胁等级 ' + threat, life: 100, color: '#ef5350' });
+          beep(180, .3, 'sawtooth', .14, 90);
+        }
         spark(enemy.x, enemy.y, '#ffcdd2', 26, 260);
-        floats.push({ x: enemy.x, y: enemy.y - 20, txt: '击杀 +1', life: 70, color: '#fff' });
+        floats.push({ x: enemy.x, y: enemy.y - 20, txt: combo > 1 ? combo + ' 连击 +' + gain : '击杀 +' + gain, life: 80, color: combo > 1 ? '#ffd54f' : '#fff' });
         beep(760, .35, 'square', .16, 180);
       }
-    } else if (!dead && b.owner === 'e' && player.inv <= 0 && dist2(b.x, b.y, player.x, player.y) < (player.r + b.r) ** 2) {
-      player.hp -= 12; player.inv = 0.5 * 60; hurtFlash = 1; dead = true;
-      spark(b.x, b.y, '#42a5f5', 10, 140);
-      beep(160, .16, 'sawtooth', .16);
-      if (player.hp <= 0) { player.hp = 0; gameOver(); }
+    } else if (!dead && b.owner === 'e' && dist2(b.x, b.y, player.x, player.y) < (player.r + b.r) ** 2) {
+      if (player.shieldT > 0) { // 护盾挡下子弹
+        dead = true;
+        spark(b.x, b.y, '#29b6f6', 12, 160);
+        beep(320, .1, 'sine', .12, 480);
+      } else if (player.inv <= 0) {
+        player.hp -= 12; player.inv = 0.5 * 60; hurtFlash = 1; dead = true;
+        combo = 0; comboT = 0; // 被击中断连击
+        spark(b.x, b.y, '#42a5f5', 10, 140);
+        beep(160, .16, 'sawtooth', .16);
+        if (player.hp <= 0) { player.hp = 0; gameOver(); }
+      }
     }
     if (dead) bullets.splice(i, 1);
   }
@@ -306,23 +433,41 @@ function updateFx() {
 
 /* ---------- 玩家 ---------- */
 function updatePlayer() {
-  let dx = 0, dy = 0;
-  if (keys['w'] || keys['arrowup']) dy--;
-  if (keys['s'] || keys['arrowdown']) dy++;
-  if (keys['a'] || keys['arrowleft']) dx--;
-  if (keys['d'] || keys['arrowright']) dx++;
-  if (dx || dy) {
-    const d = Math.hypot(dx, dy);
-    player.x += dx / d * player.speed; player.y += dy / d * player.speed;
-    pushOutOfMirrors(player);
+  // 冲刺
+  if (player.dashCd > 0) player.dashCd--;
+  if (player.dashT > 0) {
+    player.dashT--;
+    player.x += player.dashDx * 9.5; player.y += player.dashDy * 9.5;
+    spark(player.x, player.y, 'rgba(129,212,250,.8)', 2, 30);
+  } else {
+    let dx = 0, dy = 0;
+    if (keys['w'] || keys['arrowup']) dy--;
+    if (keys['s'] || keys['arrowdown']) dy++;
+    if (keys['a'] || keys['arrowleft']) dx--;
+    if (keys['d'] || keys['arrowright']) dx++;
+    if (dx || dy) {
+      const d = Math.hypot(dx, dy);
+      player.x += dx / d * player.speed; player.y += dy / d * player.speed;
+      // Shift 冲刺触发（有方向且冷却完毕）
+      if (keys['shift'] && player.dashCd <= 0) {
+        player.dashT = 6; player.dashCd = 90; // 冲刺 0.1s，冷却 1.5s
+        player.dashDx = dx / d; player.dashDy = dy / d;
+        player.inv = Math.max(player.inv, 10); // 冲刺中短暂无敌帧
+        beep(420, .09, 'sine', .09, 840);
+      }
+    }
   }
+  pushOutOfMirrors(player);
   player.aim = Math.atan2(mouse.y - player.y, mouse.x - player.x);
   player.cool--;
   if ((mouse.down || keys[' ']) && player.cool <= 0) {
     fire(player, mouse.x, mouse.y, true);
-    player.cool = 17; // ~0.28s
+    player.cool = player.triT > 0 ? 24 : 17; // 三连发时稍降射速
   }
   if (player.inv > 0) player.inv--;
+  if (player.triT > 0) player.triT--;
+  if (player.shieldT > 0) player.shieldT--;
+  if (player.pierceT > 0) player.pierceT--;
 }
 
 /* ---------- 敌人 AI ---------- */
@@ -385,6 +530,7 @@ function updateEnemy() {
     } else { gx = player.x; gy = player.y; }
   }
   const dd = Math.hypot(gx - enemy.x, gy - enemy.y) || 1;
+  enemy.speed = 2.1 + Math.min(threat - 1, 6) * 0.18; // 威胁等级加速
   enemy.x += (gx - enemy.x) / dd * enemy.speed;
   enemy.y += (gy - enemy.y) / dd * enemy.speed;
   pushOutOfMirrors(enemy);
@@ -392,11 +538,11 @@ function updateEnemy() {
   if (enemy.hitT > 0) enemy.hitT--;
   if (enemy.gunFlash > 0) enemy.gunFlash--;
 
-  // 开火（开局 3 秒宽限）
+  // 开火（开局 3 秒宽限），威胁等级加快射速
   enemy.cool -= 1 / 60;
   if (enemy.cool <= 0 && graceT <= 0) {
     enemyShootDecision();
-    enemy.cool = rnd(1.0, 1.7);
+    enemy.cool = Math.max(0.55, rnd(1.0, 1.7) - (threat - 1) * 0.12);
   }
 }
 
@@ -466,6 +612,22 @@ function drawMirror(m) {
   ctx.fillStyle = '#607d8b';
   ctx.beginPath(); ctx.arc(m.x1, m.y1, 4.5, 0, 7); ctx.fill();
   ctx.beginPath(); ctx.arc(m.x2, m.y2, 4.5, 0, 7); ctx.fill();
+  // 受损裂纹（耐久 < 3）
+  const hp = m.hp === undefined ? 3 : m.hp;
+  if (hp < 3) {
+    const mx = (m.x1 + m.x2) / 2, my = (m.y1 + m.y2) / 2;
+    ctx.strokeStyle = 'rgba(55,71,79,.55)'; ctx.lineWidth = 1;
+    const cracks = 3 - hp;
+    for (let i = 0; i < cracks; i++) {
+      const t = (i + 1) / (cracks + 1);
+      const cx = m.x1 + (m.x2 - m.x1) * t, cy = m.y1 + (m.y2 - m.y1) * t;
+      const nx = i % 2 ? 1 : -1;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + nx * 4, cy - nx * 4 - 2);
+      ctx.stroke();
+    }
+  }
 }
 
 function drawGun(o, color) {
@@ -548,11 +710,50 @@ function drawHud() {
   ctx.fillStyle = '#fff'; ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'left';
   ctx.fillText('生命 ' + Math.max(0, player.hp | 0), bx + 8, by + bh - 4);
 
-  // 击杀数
+  // 击杀数 + 积分 + 连击
   ctx.textAlign = 'right'; ctx.font = 'bold 20px system-ui';
   ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.lineWidth = 4;
-  ctx.strokeText('击杀 × ' + kills, W - 30, 48);
-  ctx.fillStyle = '#ffd54f'; ctx.fillText('击杀 × ' + kills, W - 30, 48);
+  ctx.strokeText('击杀 × ' + kills + '   ' + score + ' 分', W - 30, 48);
+  ctx.fillStyle = '#ffd54f'; ctx.fillText('击杀 × ' + kills + '   ' + score + ' 分', W - 30, 48);
+
+  if (combo > 1 && comboT > 0) {
+    ctx.font = 'bold 16px system-ui';
+    ctx.strokeText(combo + ' 连击', W - 30, 72);
+    ctx.fillStyle = '#ff8a65'; ctx.fillText(combo + ' 连击', W - 30, 72);
+  }
+
+  // 威胁等级
+  ctx.textAlign = 'left'; ctx.font = 'bold 13px system-ui';
+  ctx.strokeText('威胁等级 ' + threat, 30, 68);
+  ctx.fillStyle = threat >= 5 ? '#ef5350' : '#ffab91';
+  ctx.fillText('威胁等级 ' + threat, 30, 68);
+
+  // 冲刺冷却条
+  if (player.dashCd > 0) {
+    ctx.fillStyle = 'rgba(255,255,255,.25)';
+    ctx.fillRect(30, 78, 60 * (1 - player.dashCd / 90), 4);
+  } else {
+    ctx.fillStyle = 'rgba(129,212,250,.9)';
+    ctx.fillRect(30, 78, 60, 4);
+  }
+  ctx.font = '10px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.7)';
+  ctx.fillText('冲刺', 96, 83);
+
+  // buff 计时图标
+  let buffX = 30;
+  const buffs = [];
+  if (player.triT > 0) buffs.push({ t: player.triT / 600, c: '#ffca28', n: '三连' });
+  if (player.shieldT > 0) buffs.push({ t: player.shieldT / 480, c: '#29b6f6', n: '护盾' });
+  if (player.pierceT > 0) buffs.push({ t: player.pierceT / 360, c: '#ab47bc', n: '穿镜' });
+  for (const b of buffs) {
+    ctx.fillStyle = b.c;
+    roundRect(buffX, 92, 52, 14, 7); ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,.45)';
+    roundRect(buffX + 52 * b.t, 92, 52 * (1 - b.t), 14, 7); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText(b.n, buffX + 26, 103);
+    buffX += 60;
+  }
 
   // 宽限提示
   if (graceT > 0) {
@@ -577,6 +778,19 @@ function render() {
 
   for (const m of mirrors) drawMirror(m);
 
+  // 道具
+  for (const p of powerups) {
+    const pulse = 1 + .12 * Math.sin(surviveT * 6 + p.x);
+    ctx.fillStyle = 'rgba(0,0,0,.2)';
+    ctx.beginPath(); ctx.ellipse(p.x, p.y + 9, p.r * .9, p.r * .35, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r * pulse, 0, 7); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r * pulse, 0, 7); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,.4)';
+    ctx.beginPath(); ctx.arc(p.x - 3, p.y - 4, 3 * pulse, 0, 7); ctx.fill();
+  }
+
   if (state === 'playing' || state === 'paused') {
     // 子弹拖尾
     for (const b of bullets) {
@@ -595,6 +809,13 @@ function render() {
       ctx.beginPath(); ctx.arc(b.x - 1, b.y - 1, 1.2, 0, 7); ctx.fill();
     }
 
+    // 玩家护盾光环
+    if (player.shieldT > 0 && (player.shieldT > 120 || (player.shieldT >> 3) % 2 === 0)) {
+      ctx.strokeStyle = 'rgba(41,182,246,.75)'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(player.x, player.y, player.r + 7, 0, 7); ctx.stroke();
+      ctx.strokeStyle = 'rgba(129,212,250,.3)';
+      ctx.beginPath(); ctx.arc(player.x, player.y, player.r + 11, 0, 7); ctx.stroke();
+    }
     drawAimLine();
     drawActor(player, player.inv > 0 && (player.inv >> 2) % 2 === 0 ? 'rgba(66,165,245,.4)' : '#42a5f5', '你');
     if (enemy.alive) drawActor(enemy, enemy.hitT > 0 ? '#ffcdd2' : '#ef5350', '敌');
@@ -644,9 +865,14 @@ function loop(ts) {
   surviveT += 1 / 60;
   if (graceT > 0) graceT -= 1 / 60;
   if (hurtFlash > 0) hurtFlash -= .04;
+  // 连击计时衰减
+  if (comboT > 0) { comboT -= 1 / 60; if (comboT <= 0) combo = 0; }
+  // 存活积分
+  score += 2; // 每秒 120 分
   updatePlayer();
   updateEnemy();
   updateBullets();
+  updatePowerups();
   updateFx();
   render();
 }
@@ -654,8 +880,17 @@ requestAnimationFrame(loop);
 
 function gameOver() {
   state = 'over';
+  const finalScore = score + Math.floor(surviveT) * 10; // 存活结算加成
+  // 最高分持久化
+  const isRecord = finalScore > bestScore;
+  if (isRecord) {
+    bestScore = finalScore; bestKills = kills; bestTime = Math.floor(surviveT);
+    try { localStorage.setItem('mirrorfield_best', JSON.stringify({ score: bestScore, kills: bestKills, time: bestTime })); } catch (e) {}
+    refreshBestMenu();
+  }
   document.getElementById('stKills').textContent = kills;
   document.getElementById('stTime').textContent = Math.floor(surviveT);
+  document.getElementById('stScore').textContent = finalScore + (isRecord ? ' （新纪录！）' : '');
   document.getElementById('over').classList.remove('hidden');
   beep(300, .5, 'sawtooth', .18, 60);
 }
