@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#2e3b2a"/>
+  <circle cx="256" cy="256" r="180" fill="#76b043"/>
+  <!-- 三面镜子 -->
+  <g stroke="#eceff1" stroke-width="22" stroke-linecap="round">
+    <line x1="130" y1="150" x2="210" y2="230"/>
+    <line x1="290" y1="130" x2="370" y2="210"/>
+    <line x1="150" y1="330" x2="230" y2="410"/>
+  </g>
+  <g stroke="#90a4ae" stroke-width="22" stroke-linecap="round">
+    <line x1="290" y1="270" x2="400" y2="380"/>
+  </g>
+  <!-- 反弹子弹轨迹 -->
+  <path d="M 120 400 L 240 300 L 200 180" fill="none" stroke="#ffeb3b" stroke-width="14" stroke-linecap="round" stroke-dasharray="4 26"/>
+  <circle cx="200" cy="180" r="16" fill="#ffeb3b"/>
+  <circle cx="256" cy="256" r="34" fill="#42a5f5" stroke="#fff" stroke-width="10"/>
+</svg>

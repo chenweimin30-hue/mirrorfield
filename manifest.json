@@ -1,0 +1,18 @@
+{
+  "name": "镜原 Mirrorfield",
+  "short_name": "镜原",
+  "description": "草原镜林多人对战：子弹沿镜面反弹，最多10人同场竞技",
+  "start_url": "./index.html",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#2e3b2a",
+  "theme_color": "#2e3b2a",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
