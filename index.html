@@ -346,6 +346,8 @@ function genMirrors() {
 }
 
 function resetGame() {
+  if (typeof applyMapSize==='function') applyMapSize();
+  if (typeof applyMapSize==='function') applyMapSize();
   genMirrors();
   player = { x: 100, y: 100, r: 14, hp: 100, aim: 0, cool: 0, speed: 3.3, inv: 0,
              dashCd: 0, dashT: 0, dashDx: 0, dashDy: 0, triT: 0, shieldT: 0, pierceT: 0, rapidT: 0 };
