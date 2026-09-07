@@ -13,8 +13,8 @@
   html,body{margin:0;padding:0;height:100%;background:#2e3b2a;font-family:system-ui,"Segoe UI","Microsoft YaHei",sans-serif;
             overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;}
   #wrap{position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;}
-  #stage{position:relative;width:100%;height:100%;max-width:min(100vw,calc(100vh*1.5));}
-  canvas{display:block;width:100%;height:100%;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.5);background:#7cb342;touch-action:none;}
+  #stage{position:relative;width:100%;height:100%;}
+  canvas{display:block;width:100%;height:100%;background:#7cb342;touch-action:none;}
   .overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;
            border-radius:10px;color:#fff;background:rgba(20,32,18,.78);backdrop-filter:blur(3px);cursor:default;z-index:5;padding:16px;box-sizing:border-box;overflow:auto;}
   .hidden{display:none !important;}
@@ -66,7 +66,8 @@
         <b>WASD</b> 移动 &nbsp; <b>鼠标</b> 瞄准 &nbsp; <b>空格/左键</b> 射击<br>
         <b>Shift</b> 冲刺 &nbsp; 手机：左摇杆移动 · 右键射击
       </div>
-      <button id="btnSolo">单机闯关</button>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;align-items:center;margin:0 0 14px;font-size:14px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);border-radius:22px;padding:8px 16px;max-width:92%;"><span>地图</span><label style="cursor:pointer"><input type="radio" name="mapSize" value="screen" checked> 屏幕大小</label><label style="cursor:pointer"><input type="radio" name="mapSize" value="medium"> 中等</label><label style="cursor:pointer"><input type="radio" name="mapSize" value="large"> 超大</label></div>
+<button id="btnSolo">单机闯关</button>
       <button id="btnNet" class="secondary-btn">加入联机房间</button>
       <div class="legend">
         <span><i style="background:#42a5f5"></i>你</span>
@@ -96,7 +97,9 @@
    本地模拟与服务器端逻辑保持一致（镜像反射/道具/连击）
 =====================================================================*/
 
-const W = 3840, H = 2560, HEDGE = 18;  // 超大地图，贪吃蛇式自由游走 + 镜头跟随
+let W = 960, H = 640, HEDGE = 18;
+let mapSizeMode = 'screen';
+const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);  // 超大地图，贪吃蛇式自由游走 + 镜头跟随
 let viewW = 960, viewH = 640;           // 可视窗口（逻辑像素）
 let camX = 0, camY = 0;                 // 镜头左上角（世界坐标）
 const cv = document.getElementById('cv');
@@ -138,6 +141,15 @@ function screenToWorld(clientX, clientY) {
 function touchScreen(t) {
   const r = cv.getBoundingClientRect();
   return { x: t.clientX - r.left, y: t.clientY - r.top, rw: r.width, rh: r.height };
+}
+
+function applyMapSize() {
+  const sel = document.querySelector('input[name="mapSize"]:checked');
+  mapSizeMode = (sel && sel.value) || 'screen';
+  if (mapSizeMode === 'screen') { W = Math.round(viewW || 960); H = Math.round(viewH || 640); }
+  else if (mapSizeMode === 'medium') { W = 1600; H = 1066; }
+  else { W = 2560; H = 1706; }
+  if (typeof paintGround === 'function') paintGround();
 }
 window.addEventListener('resize', fit);
 
@@ -316,7 +328,7 @@ function makeMirror(cx, cy, len, type) {
 }
 function genMirrors() {
   mirrors = [];
-  const n = 90 + Math.floor(Math.random() * 30);
+  const areaRatio = (W * H) / (960 * 640); const n = Math.max(10, Math.round(16 * areaRatio) + Math.floor(Math.random() * 6));
   let tries = 0;
   while (mirrors.length < n && tries < 1200) {
     tries++;
@@ -341,7 +353,7 @@ function resetGame() {
   startLevel(1);
   bullets = []; particles = []; floats = []; powerups = [];
   kills = 0; surviveT = 0; hurtFlash = 0; graceT = 3;
-  combo = 0; comboT = 0; score = 0; spawnT = 3;
+  combo = 0; comboT = 0; score = 0; spawnT = 1.2;
 }
 
 function makeCampaignEnemy(index, count) {
@@ -383,9 +395,25 @@ function completeLevel() {
   startLevel(Math.min(20, level + 1));
 }
 
+
+function shatterMirror(m, cx, cy) {
+  m.hp = 0; m.broken = true; m.respawnAt = performance.now() + 2000;
+  if (typeof spark === 'function') spark(cx, cy, '#cfd8dc', 16, 220);
+  if (typeof beep === 'function') beep(500, .18, 'sawtooth', .12, 140);
+}
+function updateMirrorsLocal() {
+  const now = performance.now();
+  for (const m of mirrors) {
+    if (m.broken && now >= m.respawnAt) {
+      m.hp = 3; m.broken = false;
+      if (typeof spark === 'function') spark((m.x1+m.x2)/2, (m.y1+m.y2)/2, '#90caf9', 10, 160);
+    }
+  }
+}
 const MIRROR_HALF = 4;
 function pushOutOfMirrors(o) {
   for (const m of mirrors) {
+    if (m.broken) continue;
     const c = closestOnSeg(o.x, o.y, m.x1, m.y1, m.x2, m.y2);
     const d = Math.hypot(o.x - c.x, o.y - c.y), min = o.r + MIRROR_HALF;
     if (d < min) {
@@ -923,7 +951,7 @@ function render() {
 const joyMove = { active: false, id: -1, cx: 0, cy: 0, dx: 0, dy: 0 };
 const joyFire = { active: false, id: -1 };
 function drawTouchUI() {
-  if (!touchInput.active) return;
+  if (!isTouch && !touchInput.active) return;
   const r = cv.getBoundingClientRect();
   const sw = r.width, sh = r.height;
   if (joyMove.active) {

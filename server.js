@@ -11,7 +11,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const PORT = process.env.PORT || 8080;
-const W = 3840, H = 2560, HEDGE = 18;  // 超大地图，与客户端一致（贪吃蛇式自由游走）
+let W = 1600, H = 1066, HEDGE = 18;  // 超大地图，与客户端一致（贪吃蛇式自由游走）
 const TICK_HZ = 30;                    // 服务器模拟频率
 const SNAPSHOT_MS = 66;                // 快照下发间隔（~15fps 状态 + 客户端插值）
 const MAX_PLAYERS = 10;
@@ -120,6 +120,7 @@ function raySegment(px, py, dx, dy, x1, y1, x2, y2) {
 function reflect(vx, vy, m) { return m.type === '/' ? { x: -vy, y: -vx } : { x: vy, y: vx }; }
 function pushOutOfMirrors(o, mirrors) {
   for (const m of mirrors) {
+    if (m.broken) continue;
     const c = closestOnSeg(o.x, o.y, m.x1, m.y1, m.x2, m.y2);
     const d = Math.hypot(o.x - c.x, o.y - c.y), min = o.r + 4;
     if (d < min) {
