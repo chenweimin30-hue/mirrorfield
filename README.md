@@ -111,7 +111,7 @@ curl -L -o cloudflared.exe "https://ghproxy.net/https://github.com/cloudflare/cl
 - 子弹沿镜面 45° 反弹（`/` 与 `\` 两种镜面），白色虚线为最多 3 次反弹的预测弹道
 - 被击中后短暂无敌（闪烁），死亡 2 秒后于远离敌人的位置重生
 - 进入游戏前可设置 **允许子弹打破镜子**（联机时由服务器同步给全房间）
-- 道具随机刷新：**治疗 / 子弹增强 / 三连发 / 护盾 / 穿甲**
+- 道具随机刷新：**治疗 / 激光增强 / 三连发 / 护盾 / 穿甲**
 
 ### 操作
 
@@ -129,16 +129,21 @@ curl -L -o cloudflared.exe "https://ghproxy.net/https://github.com/cloudflare/cl
 
 仓库已提供完整的构建支持，详见 **[BUILD_APP.md](./BUILD_APP.md)**。
 
-支持三种方式：
+支持方式：
 
-1. **PWA 安装**（最简单）：浏览器打开后「添加到主屏幕」
-2. **PWABuilder 在线生成 APK**（推荐新手）：无需 Android Studio，几分钟得到可安装的 APK
-3. **Capacitor 本地构建**（推荐上架）：生成真正的 Android / iOS 工程，可签名发布
+1. **GitHub Actions 自动打包 APK（推荐）**
+   - 打开仓库 [Actions](https://github.com/chenweimin30-hue/mirrorfield/actions) → **Build Android APK** → **Run workflow**
+   - 选择 `debug`（默认可直接安装）或 `release`（需配置签名 Secrets）
+   - 构建完成后在 Artifacts 下载 APK
+2. **PWA 安装**：浏览器打开后「添加到主屏幕」
+3. **PWABuilder 在线生成 APK**：适合无本地环境时快速出包
+4. **Capacitor 本地构建**：适合上架与深度定制
 
-快速开始 Capacitor：
+本地 Capacitor 快速开始：
 
 ```bash
 npm install
+npm run prepare:www
 npx cap add android
 npx cap sync
 npx cap open android
@@ -154,5 +159,6 @@ npx cap open android
 | `index.html` | 游戏客户端（Canvas 渲染、联机同步、三端输入、PWA） |
 | `sw.js` / `manifest.json` / `icon.svg` | PWA 离线与桌面图标支持 |
 | `package.json` / `capacitor.config.json` | Capacitor 构建配置（生成 Android / iOS APP） |
+| `.github/workflows/build-android.yml` | GitHub Actions 自动构建 APK |
 | `BUILD_APP.md` | 原生 APP 构建完整指南 |
 | `tunnel/` | 放穿透客户端（如 cpolar.exe）的目录，已加入 .gitignore |
