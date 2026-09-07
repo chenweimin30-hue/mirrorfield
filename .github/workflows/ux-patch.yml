@@ -1,0 +1,191 @@
+name: UX Patch Game
+on:
+  workflow_dispatch:
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply UX patches
+        run: |
+          set -e
+          python3 << 'PY'
+          from pathlib import Path
+
+          idx = Path('index.html').read_text(encoding='utf-8')
+          srv = Path('server.js').read_text(encoding='utf-8')
+
+          # 1) Fullscreen: remove max-width letterbox
+          idx = idx.replace(
+            '#stage{position:relative;width:100%;height:100%;max-width:min(100vw,calc(100vh*1.5));}',
+            '#stage{position:relative;width:100%;height:100%;}'
+          )
+          idx = idx.replace(
+            'canvas{display:block;width:100%;height:100%;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.5);background:#7cb342;touch-action:none;}',
+            'canvas{display:block;width:100%;height:100%;background:#7cb342;touch-action:none;}'
+          )
+
+          # 2) Map size options in menu (before buttons)
+          if 'name="mapSize"' not in idx:
+              menu_insert = '''      <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;align-items:center;margin:0 0 14px;font-size:14px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);border-radius:22px;padding:8px 16px;max-width:92%;">
+        <span>地图</span>
+        <label style="cursor:pointer"><input type="radio" name="mapSize" value="screen" checked> 屏幕大小</label>
+        <label style="cursor:pointer"><input type="radio" name="mapSize" value="medium"> 中等</label>
+        <label style="cursor:pointer"><input type="radio" name="mapSize" value="large"> 超大</label>
+      </div>
+'''
+              if '<button id="btnSolo">' in idx:
+                  idx = idx.replace('<button id="btnSolo">', menu_insert + '<button id="btnSolo">')
+              elif '<button id="btnCampaign">' in idx:
+                  idx = idx.replace('<button id="btnCampaign">', menu_insert + '<button id="btnCampaign">')
+              elif '<button id="btnStart">' in idx:
+                  idx = idx.replace('<button id="btnStart">', menu_insert + '<button id="btnStart">')
+
+          # 3) Make W/H mutable + default screen-ish + isTouch
+          idx = idx.replace(
+            'const W = 3840, H = 2560, HEDGE = 18;',
+            'let W = 960, H = 640, HEDGE = 18;\nlet mapSizeMode = \'screen\';\nconst isTouch = (\'ontouchstart\' in window) || (navigator.maxTouchPoints > 0);'
+          )
+          # also handle other possible const forms
+          idx = idx.replace(
+            'const W = 1920, H = 1280, HEDGE = 18;',
+            'let W = 960, H = 640, HEDGE = 18;\nlet mapSizeMode = \'screen\';\nconst isTouch = (\'ontouchstart\' in window) || (navigator.maxTouchPoints > 0);'
+          )
+
+          # 4) applyMapSize helper after fit/updateCamera block
+          if 'function applyMapSize' not in idx:
+              helper = '''
+function applyMapSize() {
+  const sel = document.querySelector('input[name="mapSize"]:checked');
+  mapSizeMode = (sel && sel.value) || 'screen';
+  if (mapSizeMode === 'screen') { W = Math.round(viewW || 960); H = Math.round(viewH || 640); }
+  else if (mapSizeMode === 'medium') { W = 1600; H = 1066; }
+  else { W = 2560; H = 1706; }
+  if (typeof paintGround === 'function') paintGround();
+}
+'''
+              if 'window.addEventListener(\'resize\', fit);' in idx:
+                  idx = idx.replace('window.addEventListener(\'resize\', fit);', helper + 'window.addEventListener(\'resize\', fit);')
+              elif 'function updateCamera' in idx:
+                  idx = idx.replace('function updateCamera', helper + 'function updateCamera')
+
+          # 5) Call applyMapSize at start of resetGame / genMirrors usage
+          if 'function resetGame' in idx and 'applyMapSize()' not in idx.split('function resetGame')[1][:200]:
+              idx = idx.replace('function resetGame() {\n  genMirrors();', 'function resetGame() {\n  if (typeof applyMapSize===\'function\') applyMapSize();\n  genMirrors();')
+              idx = idx.replace('function resetGame(){\n  genMirrors();', 'function resetGame(){\n  if (typeof applyMapSize===\'function\') applyMapSize();\n  genMirrors();')
+
+          # 6) Always show touch UI on touch devices
+          idx = idx.replace(
+            'function drawTouchUI() {\n  if (!touchInput.active) return;',
+            'function drawTouchUI() {\n  if (!isTouch && !touchInput.active) return;'
+          )
+          idx = idx.replace(
+            'function drawTouchUI(){\n  if (!touchInput.active) return;',
+            'function drawTouchUI(){\n  if (!isTouch && !touchInput.active) return;'
+          )
+
+          # 7) Mirror shatter -> respawn in 2s (client)
+          if 'function shatterMirror' not in idx:
+              shatter = '''
+function shatterMirror(m, cx, cy) {
+  m.hp = 0; m.broken = true; m.respawnAt = performance.now() + 2000;
+  if (typeof spark === 'function') spark(cx, cy, '#cfd8dc', 16, 220);
+  if (typeof beep === 'function') beep(500, .18, 'sawtooth', .12, 140);
+}
+function updateMirrorsLocal() {
+  const now = performance.now();
+  for (const m of mirrors) {
+    if (m.broken && now >= m.respawnAt) {
+      m.hp = 3; m.broken = false;
+      if (typeof spark === 'function') spark((m.x1+m.x2)/2, (m.y1+m.y2)/2, '#90caf9', 10, 160);
+    }
+  }
+}
+'''
+              idx = idx.replace('const MIRROR_HALF = 4;', shatter + 'const MIRROR_HALF = 4;')
+
+          # Replace permanent splice with shatterMirror where possible
+          idx = idx.replace(
+            "mirrors.splice(mi, 1);\n              spark(c.x, c.y, '#eceff1', 12, 180);",
+            'if (typeof shatterMirror===\'function\') shatterMirror(m, c.x, c.y); else mirrors.splice(mi, 1);'
+          )
+          idx = idx.replace(
+            "mirrors.splice(mi, 1);\n              spark(c.x, c.y, '#cfd8dc', 16, 220);",
+            'if (typeof shatterMirror===\'function\') shatterMirror(m, c.x, c.y); else mirrors.splice(mi, 1);'
+          )
+
+          # Skip broken mirrors in pushOut / collision loops (best-effort)
+          if 'if (m.broken) continue;' not in idx:
+              idx = idx.replace(
+                'function pushOutOfMirrors(o) {\n  for (const m of mirrors) {',
+                'function pushOutOfMirrors(o) {\n  for (const m of mirrors) {\n    if (m.broken) continue;'
+              )
+
+          # Call updateMirrorsLocal in game loop near updatePowerups
+          if 'updateMirrorsLocal' in idx and 'updateMirrorsLocal();' not in idx:
+              idx = idx.replace('updatePowerupsLocal();', 'updateMirrorsLocal();\n      updatePowerupsLocal();')
+              idx = idx.replace('updatePowerupsLocal()', 'updateMirrorsLocal(); updatePowerupsLocal()')
+
+          # 8) More powerups: shorter spawn interval + higher cap
+          idx = idx.replace('const cap = mode === \'campaign\' ? 6 : 3;', 'const cap = mode === \'campaign\' ? 8 : 5;')
+          idx = idx.replace("spawnT = mode === 'campaign' ? rnd(4, 8) : rnd(7, 12);", "spawnT = mode === 'campaign' ? rnd(2.2, 4.2) : rnd(3, 6);")
+          idx = idx.replace('spawnT = 3;', 'spawnT = 1.2;')
+
+          # 9) genMirrors count based on map area
+          idx = idx.replace(
+            'const n = 90 + Math.floor(Math.random() * 30);',
+            'const areaRatio = (W * H) / (960 * 640); const n = Math.max(10, Math.round(16 * areaRatio) + Math.floor(Math.random() * 6));'
+          )
+
+          # Server: mirror respawn + more powerups
+          srv = srv.replace('const W = 3840, H = 2560, HEDGE = 18;', 'let W = 1600, H = 1066, HEDGE = 18;')
+          srv = srv.replace('const W = 1920, H = 1280, HEDGE = 18;', 'let W = 1600, H = 1066, HEDGE = 18;')
+
+          if 'm.broken' not in srv:
+              srv = srv.replace(
+                'function pushOutOfMirrors(o, mirrors) {\n  for (const m of mirrors) {',
+                'function pushOutOfMirrors(o, mirrors) {\n  for (const m of mirrors) {\n    if (m.broken) continue;'
+              )
+              # shatter instead of splice
+              srv = srv.replace(
+                'room.mirrors.splice(mi, 1); broadcast({ t: \'shatter\', i: mi });',
+                'm.hp = 0; m.broken = true; m.respawnAt = Date.now() + 2000; broadcast({ t: \'shatter\', i: mi });'
+              )
+              srv = srv.replace(
+                "if (m.hp <= 0) { room.mirrors.splice(mi, 1); broadcast({ t: 'shatter', i: mi }); }",
+                "if (m.hp <= 0) { m.broken = true; m.respawnAt = Date.now() + 2000; broadcast({ t: 'shatter', i: mi }); }"
+              )
+
+          # powerup spawn faster
+          srv = srv.replace('room.powerups.length < 3', 'room.powerups.length < 6')
+          srv = srv.replace('room.puSpawnT = rnd(7, 12);', 'room.puSpawnT = rnd(2.5, 5);')
+
+          # respawn mirrors in stepPowerups or tick
+          if 'm.respawnAt' in srv and 'for (const m of room.mirrors)' not in srv:
+              inject = '''
+  const _now = Date.now();
+  for (const m of room.mirrors) {
+    if (m.broken && _now >= m.respawnAt) { m.broken = false; m.hp = 3; }
+  }
+'''
+              if 'function stepPowerups' in srv:
+                  srv = srv.replace('function stepPowerups(dt) {', 'function stepPowerups(dt) {' + inject)
+
+          Path('index.html').write_text(idx, encoding='utf-8')
+          Path('server.js').write_text(srv, encoding='utf-8')
+          print('patched index', len(idx), 'server', len(srv))
+          print('has mapSize', 'mapSize' in idx)
+          print('has shatterMirror', 'shatterMirror' in idx)
+          print('has isTouch', 'isTouch' in idx)
+          PY
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html server.js
+          if git diff --staged --quiet; then echo "No changes"; else
+            git commit -m "feat: UX patch - map size, mirror 2s respawn, touch UI, more powerups"
+            git push
+          fi
