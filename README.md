@@ -125,11 +125,34 @@ curl -L -o cloudflared.exe "https://ghproxy.net/https://github.com/cloudflare/cl
 
 ---
 
-## 四、文件说明
+## 四、构建原生 APP
+
+仓库已提供完整的构建支持，详见 **[BUILD_APP.md](./BUILD_APP.md)**。
+
+支持三种方式：
+
+1. **PWA 安装**（最简单）：浏览器打开后「添加到主屏幕」
+2. **PWABuilder 在线生成 APK**（推荐新手）：无需 Android Studio，几分钟得到可安装的 APK
+3. **Capacitor 本地构建**（推荐上架）：生成真正的 Android / iOS 工程，可签名发布
+
+快速开始 Capacitor：
+
+```bash
+npm install
+npx cap add android
+npx cap sync
+npx cap open android
+```
+
+---
+
+## 五、文件说明
 
 | 文件 | 作用 |
 |---|---|
 | `server.js` | 零依赖服务器：静态服务 + 手写 RFC6455 WebSocket + 30Hz 权威模拟 |
 | `index.html` | 游戏客户端（Canvas 渲染、联机同步、三端输入、PWA） |
 | `sw.js` / `manifest.json` / `icon.svg` | PWA 离线与桌面图标支持 |
+| `package.json` / `capacitor.config.json` | Capacitor 构建配置（生成 Android / iOS APP） |
+| `BUILD_APP.md` | 原生 APP 构建完整指南 |
 | `tunnel/` | 放穿透客户端（如 cpolar.exe）的目录，已加入 .gitignore |
