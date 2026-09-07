@@ -1,0 +1,28 @@
+name: Camera Follow Update
+on:
+  workflow_dispatch:
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Restore baseline and apply camera-follow patch
+        run: |
+          set -e
+          GOOD=b3d9c5a8816a53d25c8d092df9db9a9ebca30626
+          git checkout "$GOOD" -- index.html server.js
+          python3 tools/patch_camera_follow.py
+          grep -q updateCamera index.html
+          grep -q 'W = 1920' index.html
+          grep -q 'W = 1920' server.js
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html server.js
+          git commit -m "feat: 镜头跟随角色自由游走（大地图，类似贪吃蛇）"
+          git push
