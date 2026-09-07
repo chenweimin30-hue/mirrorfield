@@ -1,0 +1,27 @@
+name: Restore index.html from chunks
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/index-chunks/**'
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble index.html
+        run: |
+          cat tools/index-chunks/*.b64 | base64 -d > index.html
+          head -c 80 index.html; echo
+          tail -c 80 index.html; echo
+          grep -q "Math.min(r.width / W, r.height / H)" index.html
+          grep -q "function loop" index.html
+      - name: Commit restored index.html
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git diff --cached --quiet || git commit -m "fix: 从分片恢复 index.html（角色边界修复）"
+          git push
