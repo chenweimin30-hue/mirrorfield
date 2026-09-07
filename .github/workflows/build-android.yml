@@ -41,8 +41,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: "npm"
+          node-version: "22"
+          # 仓库暂无 package-lock.json，不能启用 cache: npm
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -63,7 +63,6 @@ jobs:
         run: |
           mkdir -p www
           cp index.html manifest.json sw.js icon.svg www/
-          # 确保相对路径资源可用
           ls -la www/
 
       - name: Add Capacitor Android platform
@@ -101,7 +100,6 @@ jobs:
         run: |
           chmod +x gradlew
           if [ "${HAS_KEYSTORE}" = "true" ]; then
-            # 写入签名配置
             cat >> app/build.gradle << 'EOF'
 
           android {
@@ -142,7 +140,6 @@ jobs:
             find android/app/build/outputs -type f || true
             exit 1
           fi
-          echo "Found: $(cat $GITHUB_OUTPUT)"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
