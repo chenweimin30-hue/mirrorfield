@@ -1,0 +1,27 @@
+name: Fix Touch Joystick + Exit Button
+
+on:
+  workflow_dispatch:
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply touch + exit patches
+        run: python3 tools/fix_touch_exit.py
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          if git diff --staged --quiet; then
+            echo "No changes"
+          else
+            git commit -m "fix: always-visible touch joystick + results exit button"
+            git push
+          fi
