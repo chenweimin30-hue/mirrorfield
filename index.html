@@ -65,7 +65,7 @@
 
     <div id="menu" class="overlay">
       <h1>镜 原<small>MIRRORFIELD · 联机版</small></h1>
-      <div class="desc">草原上竖立着无数面镜子，子弹沿镜面反弹。<br>支持 <b style="color:#ffd54f">最多 10 人</b> 同房实时对战——把网址发给同一 WiFi 下的朋友即可加入。<br>手机、电脑浏览器均可直接游玩。</div>
+      <div class="desc">草原上竖立着无数面镜子，子弹沿镜面反弹。<br>支持 <b style="color:#ffd54f">最多 10 人</b> 同房实时对战。<br>点「复制房间链接」把网址发给 <b style="color:#ffd54f">全国各地的朋友</b> 即可一起玩——无需同一 WiFi。<br>手机、电脑浏览器、添加到主屏的 APP 均可游玩。</div>
       <div id="nickWrap" style="display:none;margin-bottom:4px;">
         <input id="nick" maxlength="6" placeholder="输入昵称（最多6字）">
       </div>
@@ -75,6 +75,7 @@
       </div>
       <div id="lobbyList"></div>
       <button id="btnStart">进 入 镜 林</button>
+      <button id="btnShare" style="margin-top:14px;background:linear-gradient(135deg,#26c6da,#00838f);box-shadow:0 4px 18px rgba(0,150,136,.4);">复制房间链接</button>
       <div class="tip" id="waitTip"></div>
     </div>
 
@@ -1207,6 +1208,14 @@ function startGame() {
   }
 }
 document.getElementById('btnStart').addEventListener('click', startGame);
+document.getElementById('btnShare').addEventListener('click', () => {
+  const url = location.href;
+  const done = () => showStatus('房间链接已复制，发给朋友即可加入 🌐', 3200);
+  const fail = () => showStatus('请手动复制地址栏的链接发给朋友', 3200);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(done, fail);
+  } else { fail(); }
+});
 document.getElementById('over').addEventListener('click', e => {
   if (e.target.tagName === 'BUTTON' || mode === 'net') return;
   if (state === 'results' && mode === 'local') startGame();
