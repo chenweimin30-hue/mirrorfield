@@ -1,0 +1,24 @@
+{
+  "name": "mirrorfield",
+  "version": "1.0.0",
+  "description": "镜原 Mirrorfield - 草原镜林对战游戏",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "cap:init": "npx cap init \"镜原 Mirrorfield\" com.mirrorfield.game --web-dir .",
+    "cap:add:android": "npx cap add android",
+    "cap:add:ios": "npx cap add ios",
+    "cap:sync": "npx cap sync",
+    "cap:open:android": "npx cap open android",
+    "cap:open:ios": "npx cap open ios",
+    "build:android": "npx cap sync android && npx cap open android",
+    "build:ios": "npx cap sync ios && npx cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/core": "^6.2.0",
+    "@capacitor/ios": "^6.2.0",
+    "@capacitor/cli": "^6.2.0"
+  },
+  "devDependencies": {}
+}

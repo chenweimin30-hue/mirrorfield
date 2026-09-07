@@ -4,3 +4,15 @@ tunnel/
 *.zip
 mirrorfield-PWA.zip
 .workbuddy-app/
+
+# Capacitor / 原生构建产物
+node_modules/
+android/
+ios/
+.capacitor/
+*.keystore
+*.jks
+local.properties
+.idea/
+*.iml
+.DS_Store

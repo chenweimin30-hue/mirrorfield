@@ -1,0 +1,22 @@
+{
+  "appId": "com.mirrorfield.game",
+  "appName": "镜原 Mirrorfield",
+  "webDir": ".",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 0
+    }
+  },
+  "android": {
+    "allowMixedContent": true,
+    "backgroundColor": "#2e3b2a"
+  },
+  "ios": {
+    "contentInset": "automatic",
+    "backgroundColor": "#2e3b2a"
+  }
+}

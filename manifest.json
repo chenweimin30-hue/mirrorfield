@@ -7,12 +7,20 @@
   "orientation": "landscape",
   "background_color": "#2e3b2a",
   "theme_color": "#2e3b2a",
+  "lang": "zh-CN",
+  "categories": ["games"],
   "icons": [
     {
       "src": "icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
+    },
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
     }
   ]
 }
