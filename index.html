@@ -1,1 +1,157 @@
-PLACEHOLDER_INDEX
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#2e3b2a">
+<link rel="manifest" href="manifest.json">
+<title>镜原 Mirrorfield · 联机版</title>
+<style>
+  html,body{margin:0;padding:0;height:100%;background:#2e3b2a;font-family:system-ui,"Segoe UI","Microsoft YaHei",sans-serif;
+            overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;}
+  #wrap{position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;}
+  #stage{position:relative;width:100%;height:100%;max-width:min(100vw,calc(100vh*1.5));}
+  canvas{display:block;width:100%;height:100%;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.5);background:#7cb342;touch-action:none;}
+  .overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;
+           border-radius:10px;color:#fff;background:rgba(20,32,18,.78);backdrop-filter:blur(3px);cursor:default;z-index:5;padding:16px;box-sizing:border-box;overflow:auto;}
+  .hidden{display:none !important;}
+  h1{font-size:min(44px,9vw);margin:0 0 6px;letter-spacing:6px;text-shadow:0 3px 12px rgba(0,0,0,.6);}
+  h1 small{display:block;font-size:15px;letter-spacing:3px;opacity:.75;font-weight:400;margin-top:6px;}
+  .desc{font-size:min(15px,3.4vw);line-height:1.9;opacity:.9;margin:14px 0 20px;max-width:520px;}
+  .keys{display:inline-block;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.22);border-radius:12px;
+        padding:12px 20px;font-size:min(14px,3.2vw);line-height:2;margin-bottom:22px;}
+  .keys b{background:rgba(255,255,255,.16);border-radius:5px;padding:2px 8px;margin:0 2px;font-weight:600;}
+  button{font-size:min(19px,4.5vw);padding:12px 46px;border:none;border-radius:30px;
+         background:linear-gradient(135deg,#66bb6a,#43a047);color:#fff;cursor:pointer;letter-spacing:2px;
+         box-shadow:0 4px 18px rgba(76,175,80,.45);transition:transform .12s;}
+  button:hover{transform:scale(1.06);}
+  .stat{font-size:17px;line-height:2;margin-bottom:18px;}
+  .stat span{color:#ffd54f;font-weight:700;font-size:24px;margin:0 4px;}
+  .tip{margin-top:14px;font-size:12px;opacity:.6;}
+  #status{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:6;
+          background:rgba(0,0,0,.55);color:#fff;padding:6px 16px;border-radius:18px;font-size:13px;
+          display:none;white-space:nowrap;max-width:92%;overflow:hidden;text-overflow:ellipsis;}
+  #lobbyList{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:480px;margin-bottom:14px;}
+  #lobbyList .pchip{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.1);
+                    border:1px solid rgba(255,255,255,.2);border-radius:18px;padding:4px 14px;font-size:14px;}
+  #lobbyList .pchip i{width:10px;height:10px;border-radius:50%;display:inline-block;}
+  .board{margin:10px 0 18px;border-collapse:collapse;font-size:min(15px,3.6vw);}
+  .board th,.board td{padding:6px 14px;border-bottom:1px solid rgba(255,255,255,.15);text-align:center;}
+  .board th{opacity:.6;font-weight:400;font-size:12px;}
+  .board .me{color:#ffd54f;}
+  .legend{display:flex;gap:10px;font-size:13px;margin:0 0 14px;flex-wrap:wrap;justify-content:center;max-width:520px;}
+  .legend span{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.08);
+               border:1px solid rgba(255,255,255,.15);padding:4px 12px;border-radius:20px;}
+  .legend i{width:9px;height:9px;border-radius:50%;display:inline-block;}
+  .best{font-size:14px;margin-bottom:16px;opacity:.9;}
+  .best b{color:#ffd54f;font-size:20px;}
+  input#nick{font-size:16px;padding:10px 18px;border-radius:22px;border:1px solid rgba(255,255,255,.3);
+             background:rgba(255,255,255,.1);color:#fff;outline:none;text-align:center;margin-bottom:18px;width:200px;}
+  input#nick::placeholder{color:rgba(255,255,255,.45);}
+  .option-row{display:flex;align-items:center;justify-content:center;gap:10px;margin:0 0 18px;
+              font-size:14px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);
+              border-radius:22px;padding:8px 16px;width:max-content;max-width:92%;}
+  .option-row input{width:20px;height:20px;accent-color:#66bb6a;cursor:pointer;}
+  .option-row span{cursor:pointer;}
+  .secondary-btn{margin-top:14px;background:linear-gradient(135deg,#26c6da,#00838f);
+                 box-shadow:0 4px 18px rgba(0,150,136,.4);}
+  @media (max-width:700px){
+    .keys{padding:10px 14px;}
+    .desc{margin:10px 0 14px;}
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <div id="status"></div>
+
+    <div id="menu" class="overlay">
+      <h1>镜 原<small>MIRRORFIELD · 联机版</small></h1>
+      <div class="desc">草原上竖立着无数面镜子，激光沿镜面反弹。<br>支持 <b style="color:#ffd54f">最多 10 人</b> 同房实时对战。<br>点「复制房间链接」把网址发给 <b style="color:#ffd54f">全国各地的朋友</b> 即可一起玩——无需同一 WiFi。<br>手机、电脑浏览器、添加到主屏的 APP 均可游玩。</div>
+      <div id="nickWrap" style="display:none;margin-bottom:4px;">
+        <input id="nick" maxlength="6" placeholder="输入昵称（最多6字）">
+      </div>
+      <div class="keys">
+        <b>电脑</b>：WASD 移动 · 鼠标瞄准 · 左键射击 · Shift 冲刺<br>
+        <b>手机</b>：左摇杆移动 · 右侧射击键（自动朝最近敌人 · 再点冲刺）
+      </div>
+      <label class="option-row" for="mirrorBreakToggle">
+        <input type="checkbox" id="mirrorBreakToggle" checked>
+        <span>允许激光打破镜子</span>
+      </label>
+      <div id="lobbyList"></div>
+      <button id="btnStart">联 机 镜 林</button>
+      <button id="btnCampaign" class="secondary-btn">人 机 关 卡</button>
+      <button id="btnShare" class="secondary-btn">复制房间链接</button>
+      <div class="tip" id="waitTip"></div>
+    </div>
+
+    <div id="over" class="overlay hidden">
+      <h1 id="overTitle" style="letter-spacing:3px;">本局结束</h1>
+      <table class="board" id="boardTable"></table>
+      <button id="btnRetry" class="secondary-btn">再 来 一 局</button>
+      <div class="tip" id="nextRoundTip"></div>
+    </div>
+
+    <div id="disconnect" class="overlay hidden">
+      <h1 style="font-size:28px;">连接已断开</h1>
+      <div class="stat" id="dcReason">与服务器失去连接</div>
+      <button onclick="location.reload()">重新连接</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ================= 镜原 Mirrorfield · 联机版客户端 =================
+   单文件：本地单人模式保留 + 联机模式（WebSocket）
+   本地模拟与服务器端逻辑保持一致（镜像反射/道具/连击）
+=====================================================================*/
+
+const W = 960, H = 640, HEDGE = 18;
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const stage = document.getElementById('stage');
+
+// 自适应画布：保持 960x640 逻辑坐标，letterbox 完整可见（contain）
+function fit() {
+  const r = stage.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = r.width * dpr; cv.height = r.height * dpr;
+  cv.style.width = r.width + 'px'; cv.style.height = r.height + 'px';
+  // 使用 contain（min）保证整张 960x640 逻辑地图始终可见，避免角色跑出可视区域
+  const scale = Math.min(r.width / W, r.height / H);
+  ctx.setTransform(dpr * scale, 0, 0, dpr * scale,
+    (r.width - W * scale) / 2 * dpr, (r.height - H * scale) / 2 * dpr);
+  window.__scale = scale; window.__offX = (r.width - W * scale) / 2; window.__offY = (r.height - H * scale) / 2;
+}
+window.addEventListener('resize', fit);
+
+/* ---------- 工具 ---------- */
+const rnd = (a, b) => a + Math.random() * (b - a);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const dist2 = (ax, ay, bx, by) => { const dx = ax - bx, dy = ay - by; return dx * dx + dy * dy; };
+function closestOnSeg(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1, L2 = dx * dx + dy * dy || 1e-9;
+  const t = clamp(((px - x1) * dx + (py - y1) * dy) / L2, 0, 1);
+  return { x: x1 + t * dx, y: y1 + t * dy };
+}
+function raySegment(px, py, dx, dy, x1, y1, x2, y2) {
+  const ex = x2 - x1, ey = y2 - y1, fx = x1 - px, fy = y1 - py;
+  const den = ex * dy - dx * ey;
+  if (Math.abs(den) < 1e-9) return -1;
+  const t = (ex * fy - fx * ey) / den, u = (dx * fy - fx * dy) / den;
+  return (t > 0.001 && u >= 0 && u <= 1) ? t : -1;
+}
+function reflect(vx, vy, m) { return m.type === '/' ? { x: -vy, y: -vx } : { x: vy, y: vx }; }
+
+/* RESTORE_MARKER_NEEDS_FULL_FILE */
+</script>
+</body>
+</html>
