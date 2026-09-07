@@ -51,6 +51,13 @@
   input#nick{font-size:16px;padding:10px 18px;border-radius:22px;border:1px solid rgba(255,255,255,.3);
              background:rgba(255,255,255,.1);color:#fff;outline:none;text-align:center;margin-bottom:18px;width:200px;}
   input#nick::placeholder{color:rgba(255,255,255,.45);}
+  .option-row{display:flex;align-items:center;justify-content:center;gap:10px;margin:0 0 18px;
+              font-size:14px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);
+              border-radius:22px;padding:8px 16px;width:max-content;max-width:92%;}
+  .option-row input{width:20px;height:20px;accent-color:#66bb6a;cursor:pointer;}
+  .option-row span{cursor:pointer;}
+  .secondary-btn{margin-top:14px;background:linear-gradient(135deg,#26c6da,#00838f);
+                 box-shadow:0 4px 18px rgba(0,150,136,.4);}
   @media (max-width:700px){
     .keys{padding:10px 14px;}
     .desc{margin:10px 0 14px;}
@@ -73,15 +80,21 @@
         <b>电脑</b>：WASD 移动 · 鼠标瞄准 · 左键射击 · Shift 冲刺<br>
         <b>手机</b>：左摇杆移动 · 右侧射击键（自动朝最近敌人 · 再点冲刺）
       </div>
+      <label class="option-row" for="mirrorBreakToggle">
+        <input type="checkbox" id="mirrorBreakToggle" checked>
+        <span>允许子弹打破镜子</span>
+      </label>
       <div id="lobbyList"></div>
-      <button id="btnStart">进 入 镜 林</button>
-      <button id="btnShare" style="margin-top:14px;background:linear-gradient(135deg,#26c6da,#00838f);box-shadow:0 4px 18px rgba(0,150,136,.4);">复制房间链接</button>
+      <button id="btnStart">联 机 镜 林</button>
+      <button id="btnCampaign" class="secondary-btn">人 机 关 卡</button>
+      <button id="btnShare" class="secondary-btn">复制房间链接</button>
       <div class="tip" id="waitTip"></div>
     </div>
 
     <div id="over" class="overlay hidden">
       <h1 id="overTitle" style="letter-spacing:3px;">本局结束</h1>
       <table class="board" id="boardTable"></table>
+      <button id="btnRetry" class="secondary-btn">再 来 一 局</button>
       <div class="tip" id="nextRoundTip"></div>
     </div>
 
@@ -152,15 +165,16 @@ function beep(f, d, type, vol, slide) {
 }
 
 /* ---------- 模式与全局状态 ---------- */
-let mode = 'local';           // 'local' | 'net'
+let mode = 'campaign';        // 'campaign' | 'net'
 let state = 'menu';           // menu | lobby | countdown | playing | paused | results
 let myId = 0;
 let mirrors = [], bullets = [], particles = [], floats = [], powerups = [];
-let player = null, enemy = null;                 // 本地模式
+let player = null, enemies = [];                  // 人机关卡模式
 let netPlayers = new Map();                       // 联机：远端玩家（插值）
 let netMe = null;                                 // 联机：本地预测的自己
 let kills = 0, surviveT = 0, hurtFlash = 0, graceT = 0;
 let combo = 0, comboT = 0, score = 0, threat = 1, spawnT = 0;
+let level = 1, mirrorBreakable = true;
 let roundLeft = 0, lobbyWait = -1, countdownLeft = 0;
 let myColor = '#42a5f5', myName = '你';
 
@@ -205,10 +219,16 @@ function onNet(m) {
     case 'join':
       if (m.id !== myId) showStatus(m.name + ' 加入了镜林', 2200);
       break;
+    case 'mirror-setting':
+      mirrorBreakable = !!m.mirrorBreakable;
+      document.getElementById('mirrorBreakToggle').checked = mirrorBreakable;
+      showStatus(mirrorBreakable ? '本局允许打破镜子' : '本局镜子不可打破', 2000);
+      break;
     case 'leave': showStatus('有玩家离开了', 2000); break;
     case 'countdown':
       state = 'countdown'; mode = 'net';
       mirrors = m.mirrors; bullets = []; powerups = []; particles = []; floats = [];
+      mirrorBreakable = m.mirrorBreakable !== false;
       // 初始化本地预测的自己（从首个快照会填充精确位置）
       netMe = { x: W / 2, y: H / 2, r: 14, aim: 0, hp: 100, alive: true, kills: 0, score: 0, cool: 0,
                shield: false, triple: false, pierce: false };
@@ -328,13 +348,51 @@ function genMirrors() {
 function resetGame() {
   genMirrors();
   player = { x: 100, y: 100, r: 14, hp: 100, aim: 0, cool: 0, speed: 3.3, inv: 0,
-             dashCd: 0, dashT: 0, dashDx: 0, dashDy: 0, triT: 0, shieldT: 0, pierceT: 0 };
-  enemy = { x: W - 100, y: H - 100, r: 14, hp: 100, aim: 0, cool: 2, speed: 2.1,
-            alive: true, respawn: 0, mode: 'wander', modeT: rnd(1, 2),
-            tx: W / 2, ty: H / 2, gunFlash: 0, hitT: 0 };
+             dashCd: 0, dashT: 0, dashDx: 0, dashDy: 0, triT: 0, shieldT: 0, pierceT: 0, rapidT: 0 };
+  enemies = [];
+  startLevel(1);
   bullets = []; particles = []; floats = []; powerups = [];
   kills = 0; surviveT = 0; hurtFlash = 0; graceT = 3;
-  combo = 0; comboT = 0; score = 0; threat = 1; spawnT = 5;
+  combo = 0; comboT = 0; score = 0; spawnT = 3;
+}
+
+function makeCampaignEnemy(index, count) {
+  const angle = (index / count) * Math.PI * 2 + rnd(-.12, .12);
+  const radius = rnd(230, 330);
+  let x = W / 2 + Math.cos(angle) * radius;
+  let y = H / 2 + Math.sin(angle) * radius * .62;
+  x = clamp(x, HEDGE + 45, W - HEDGE - 45);
+  y = clamp(y, HEDGE + 45, H - HEDGE - 45);
+  return {
+    x, y, r: 14, hp: Math.min(180, 80 + level * 5), aim: 0,
+    cool: rnd(.9, 1.8), speed: 0, alive: true, mode: 'wander',
+    modeT: rnd(.8, 2), tx: W / 2, ty: H / 2, gunFlash: 0, hitT: 0
+  };
+}
+
+function startLevel(nextLevel) {
+  level = nextLevel;
+  threat = level;
+  const count = Math.min(20, level);
+  enemies = Array.from({ length: count }, (_, index) => makeCampaignEnemy(index, count));
+  graceT = 3;
+  const levelText = '第 ' + level + ' 关 · ' + count + ' 名敌人';
+  floats.push({ x: W / 2, y: 120, txt: levelText,
+                life: 120, color: '#ffd54f' });
+  beep(620, .18, 'sine', .12, 880);
+}
+
+function completeLevel() {
+  const bonus = 500 + level * 100;
+  score += bonus;
+  player.hp = 100;
+  player.triT = 0; player.shieldT = 0; player.pierceT = 0; player.rapidT = 0;
+  bullets = [];
+  powerups = [];
+  spark(player.x, player.y, '#ffd54f', 32, 300);
+  floats.push({ x: W / 2, y: 160, txt: '关卡完成 +' + bonus, life: 120, color: '#66bb6a' });
+  beep(880, .25, 'square', .14, 1320);
+  startLevel(Math.min(20, level + 1));
 }
 
 const MIRROR_HALF = 4;
@@ -401,12 +459,12 @@ function fire(shooter, tx, ty, isPlayer) {
   const d = Math.hypot(tx - shooter.x, ty - shooter.y) || 1;
   const dx = (tx - shooter.x) / d, dy = (ty - shooter.y) / d;
   shooter.aim = Math.atan2(dy, dx);
-  const sp = isPlayer ? 9.5 : 7.2 + threat * 0.35;
+  const sp = isPlayer ? (player.rapidT > 0 ? 11.5 : 9.5) : Math.min(8.6, 7.2 + threat * 0.2);
   const mk = (ang) => {
-    bullets.push({ x: shooter.x + Math.cos(ang) * (shooter.r + 7), y: shooter.y + Math.sin(ang) * (shooter.r + 7),
+    bullets.push({ x: shooter.x + Math.cos(ang) * (shooter.r + 16), y: shooter.y + Math.sin(ang) * (shooter.r + 16),
                    vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, r: BULLET_R,
                    owner: isPlayer ? 'p' : 'e', color: isPlayer ? '#ffeb3b' : '#ff8a80',
-                   bounces: 0, life: 600, trail: [], pierce: isPlayer && player.pierceT > 0 });
+                    bounces: 0, life: 600, trail: [], pierce: isPlayer && player.pierceT > 0 });
   };
   const base = Math.atan2(dy, dx);
   if (isPlayer && player.triT > 0) { mk(base - 0.09); mk(base); mk(base + 0.09); }
@@ -426,9 +484,11 @@ function updateBulletsLocal() {
         const d = Math.hypot(b.x - c.x, b.y - c.y), min = MIRROR_HALF + b.r;
         if (d < min) {
           if (b.pierce) {
-            mirrors.splice(mi, 1);
-            spark(c.x, c.y, '#eceff1', 12, 180);
-            beep(1800, .1, 'triangle', .1, 700);
+            if (mirrorBreakable) {
+              mirrors.splice(mi, 1);
+              spark(c.x, c.y, '#eceff1', 12, 180);
+              beep(1800, .1, 'triangle', .1, 700);
+            }
             continue;
           }
           const r = reflect(b.vx, b.vy, m);
@@ -436,11 +496,13 @@ function updateBulletsLocal() {
           if (d < 1e-4) { b.x += min; }
           else { b.x = c.x + (b.x - c.x) / d * (min + .5); b.y = c.y + (b.y - c.y) / d * (min + .5); }
           b.bounces++;
-          m.hp = (m.hp === undefined ? 3 : m.hp) - 1;
-          if (m.hp <= 0) {
-            mirrors.splice(mi, 1);
-            spark(c.x, c.y, '#cfd8dc', 16, 220);
-            beep(500, .18, 'sawtooth', .12, 140);
+          if (mirrorBreakable) {
+            m.hp = (m.hp === undefined ? 3 : m.hp) - 1;
+            if (m.hp <= 0) {
+              mirrors.splice(mi, 1);
+              spark(c.x, c.y, '#cfd8dc', 16, 220);
+              beep(500, .18, 'sawtooth', .12, 140);
+            }
           }
           spark(b.x, b.y, '#ffffff', 3, 60);
           beep(1400 + b.bounces * 120, .05, 'triangle', .07);
@@ -451,8 +513,10 @@ function updateBulletsLocal() {
     b.trail.push({ x: b.x, y: b.y });
     if (b.trail.length > 10) b.trail.shift();
     let dead = b.life <= 0 || b.x < 4 || b.x > W - 4 || b.y < 4 || b.y > H - 4;
-    if (!dead && b.owner === 'p' && enemy.alive && dist2(b.x, b.y, enemy.x, enemy.y) < (enemy.r + b.r) ** 2) {
-      enemy.hp -= 34; enemy.hitT = 8; dead = true;
+    if (!dead && b.owner === 'p') {
+      for (const enemy of enemies) {
+        if (!enemy.alive || dist2(b.x, b.y, enemy.x, enemy.y) >= (enemy.r + b.r) ** 2) continue;
+        enemy.hp -= 34; enemy.hitT = 8; dead = true;
       spark(b.x, b.y, '#ef5350', 10, 140);
       beep(220, .12, 'sawtooth', .14);
       if (b.bounces > 0) { score += 50 * b.bounces; floats.push({ x: enemy.x, y: enemy.y - 36, txt: '镜杀 +' + 50 * b.bounces, life: 80, color: '#4fc3f7' }); }
@@ -460,11 +524,13 @@ function updateBulletsLocal() {
         enemy.alive = false; enemy.respawn = 2; kills++;
         comboT = 5; combo++;
         const gain = 100 * combo; score += gain;
-        const newThreat = Math.min(7, 1 + Math.floor(kills / 3));
-        if (newThreat > threat) { threat = newThreat; floats.push({ x: W/2, y: 110, txt: '⚠ 威胁等级 ' + threat, life: 100, color: '#ef5350' }); beep(180, .3, 'sawtooth', .14, 90); }
+        threat = Math.max(threat, Math.min(20, level + Math.floor(kills / Math.max(1, enemies.length) * 2)));
         spark(enemy.x, enemy.y, '#ffcdd2', 26, 260);
         floats.push({ x: enemy.x, y: enemy.y - 20, txt: combo > 1 ? combo + ' 连击 +' + gain : '击杀 +' + gain, life: 80, color: combo > 1 ? '#ffd54f' : '#fff' });
         beep(760, .35, 'square', .16, 180);
+        if (enemies.every(e => !e.alive)) completeLevel();
+      }
+        break;
       }
     } else if (!dead && b.owner === 'e' && dist2(b.x, b.y, player.x, player.y) < (player.r + b.r) ** 2) {
       if (player.shieldT > 0) { dead = true; spark(b.x, b.y, '#29b6f6', 12, 160); beep(320, .1, 'sine', .12, 480); }
@@ -528,9 +594,10 @@ function updatePlayerLocal() {
   if (player.triT > 0) player.triT--;
   if (player.shieldT > 0) player.shieldT--;
   if (player.pierceT > 0) player.pierceT--;
+  if (player.rapidT > 0) player.rapidT--;
 }
 
-function enemyShootDecision() {
+function enemyShootDecision(enemy) {
   const ex = enemy.x, ey = enemy.y;
   const dpx = player.x - ex, dpy = player.y - ey;
   const dp = Math.hypot(dpx, dpy) || 1;
@@ -555,16 +622,8 @@ function enemyShootDecision() {
   fire(enemy, ex + Math.cos(a) * 300, ey + Math.sin(a) * 300, false);
 }
 function updateEnemyLocal() {
-  if (!enemy.alive) {
-    enemy.respawn--;
-    if (enemy.respawn <= 0) {
-      let bx, by, tries = 0;
-      do { bx = rnd(HEDGE + 60, W - HEDGE - 60); by = rnd(HEDGE + 60, H - HEDGE - 60); tries++; }
-      while (dist2(bx, by, player.x, player.y) < 320 * 320 && tries < 60);
-      enemy.x = bx; enemy.y = by; enemy.hp = 100; enemy.alive = true; enemy.cool = rnd(.8, 1.4);
-    }
-    return;
-  }
+  for (const enemy of enemies) {
+    if (!enemy.alive) continue;
   enemy.modeT -= 1 / 60;
   if (enemy.modeT <= 0) {
     enemy.mode = Math.random() < .55 ? 'chase' : 'wander';
@@ -578,7 +637,7 @@ function updateEnemyLocal() {
     else { gx = player.x; gy = player.y; }
   }
   const dd = Math.hypot(gx - enemy.x, gy - enemy.y) || 1;
-  enemy.speed = 2.1 + Math.min(threat - 1, 6) * 0.18;
+  enemy.speed = Math.min(3.3, 1.6 + level * .07);
   enemy.x += (gx - enemy.x) / dd * enemy.speed;
   enemy.y += (gy - enemy.y) / dd * enemy.speed;
   pushOutOfMirrors(enemy);
@@ -586,19 +645,27 @@ function updateEnemyLocal() {
   if (enemy.gunFlash > 0) enemy.gunFlash--;
   enemy.cool -= 1 / 60;
   if (enemy.cool <= 0 && graceT <= 0) {
-    enemyShootDecision();
-    enemy.cool = Math.max(0.55, rnd(1.0, 1.7) - (threat - 1) * 0.12);
+    const activeEnemyBullets = bullets.filter(b => b.owner === 'e').length;
+    if (activeEnemyBullets < Math.min(32, 8 + level)) {
+      enemyShootDecision(enemy);
+      const activeCount = enemies.filter(e => e.alive).length;
+      const spacing = Math.max(.55, activeCount / 4 + .25);
+      enemy.cool = Math.max(.3, rnd(.8, 1.6) * spacing);
+    } else enemy.cool = .2;
+  }
   }
 }
 
 const PU_TYPES = [
   { key: 'heal', color: '#ff7043', label: '生命 +40' },
+  { key: 'rapid', color: '#26c6da', label: '子弹增强 8s' },
   { key: 'triple', color: '#ffca28', label: '三连发 10s' },
   { key: 'shield', color: '#29b6f6', label: '护盾 8s' },
   { key: 'pierce', color: '#ab47bc', label: '穿镜弹 6s' },
 ];
 function spawnPowerupLocal() {
-  if (powerups.length >= 3) return;
+  const cap = mode === 'campaign' ? 6 : 3;
+  if (powerups.length >= cap) return;
   let x, y, tries = 0;
   do { x = rnd(HEDGE + 60, W - HEDGE - 60); y = rnd(HEDGE + 60, H - HEDGE - 60); tries++; }
   while (tries < 50 && (dist2(x, y, player.x, player.y) < 130 * 130 ||
@@ -609,7 +676,7 @@ function spawnPowerupLocal() {
 }
 function updatePowerupsLocal() {
   spawnT -= 1 / 60;
-  if (spawnT <= 0) { spawnPowerupLocal(); spawnT = rnd(7, 12); }
+  if (spawnT <= 0) { spawnPowerupLocal(); spawnT = mode === 'campaign' ? rnd(4, 8) : rnd(7, 12); }
   for (let i = powerups.length - 1; i >= 0; i--) {
     const p = powerups[i];
     p.life--;
@@ -617,6 +684,7 @@ function updatePowerupsLocal() {
     if (dist2(p.x, p.y, player.x, player.y) < (p.r + player.r) ** 2) {
       const meta = PU_TYPES.find(t => t.key === p.type);
       if (p.type === 'heal') { player.hp = Math.min(100, player.hp + 40); floats.push({ x: player.x, y: player.y - 24, txt: '+40 生命', life: 60, color: '#ff7043' }); }
+      else if (p.type === 'rapid') { player.rapidT = 480; floats.push({ x: player.x, y: player.y - 24, txt: meta.label, life: 60, color: meta.color }); }
       else if (p.type === 'triple') { player.triT = 600; floats.push({ x: player.x, y: player.y - 24, txt: meta.label, life: 60, color: meta.color }); }
       else if (p.type === 'shield') { player.shieldT = 480; floats.push({ x: player.x, y: player.y - 24, txt: meta.label, life: 60, color: meta.color }); }
       else if (p.type === 'pierce') { player.pierceT = 360; floats.push({ x: player.x, y: player.y - 24, txt: meta.label, life: 60, color: meta.color }); }
@@ -844,17 +912,18 @@ function drawHud() {
   } else {
     ctx.textAlign = 'right'; ctx.font = 'bold 20px system-ui';
     ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.lineWidth = 4;
-    ctx.strokeText('击杀 × ' + kills + '   ' + score + ' 分', W - 30, 48);
-    ctx.fillStyle = '#ffd54f'; ctx.fillText('击杀 × ' + kills + '   ' + score + ' 分', W - 30, 48);
+    const head = '第 ' + level + ' 关 · ' + kills + '/' + enemies.length + ' · ' + score + ' 分';
+    ctx.strokeText(head, W - 30, 48);
+    ctx.fillStyle = '#ffd54f'; ctx.fillText(head, W - 30, 48);
     if (combo > 1 && comboT > 0) {
       ctx.font = 'bold 16px system-ui';
       ctx.strokeText(combo + ' 连击', W - 30, 72);
       ctx.fillStyle = '#ff8a65'; ctx.fillText(combo + ' 连击', W - 30, 72);
     }
     ctx.textAlign = 'left'; ctx.font = 'bold 13px system-ui';
-    ctx.strokeText('威胁等级 ' + threat, 30, 68);
+    ctx.strokeText('威胁等级 ' + threat + ' · 敌人 ' + enemies.filter(e => e.alive).length, 30, 68);
     ctx.fillStyle = threat >= 5 ? '#ef5350' : '#ffab91';
-    ctx.fillText('威胁等级 ' + threat, 30, 68);
+    ctx.fillText('威胁等级 ' + threat + ' · 敌人 ' + enemies.filter(e => e.alive).length, 30, 68);
   }
   if (!touchInput.active) drawCrosshair();
 }
@@ -940,10 +1009,8 @@ function render() {
     } else {
       if (player) drawAimLine();
       if (player) drawActor(player, player.inv > 0 && (player.inv >> 2) % 2 === 0 ? 'rgba(66,165,245,.4)' : '#42a5f5', '你', { me: true, shield: player.shieldT > 0 });
-      if (enemy && enemy.alive) drawActor(enemy, enemy.hitT > 0 ? '#ffcdd2' : '#ef5350', '敌');
-      else if (enemy) {
-        ctx.strokeStyle = 'rgba(239,83,80,.5)'; ctx.setLineDash([4, 6]); ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(enemy.x, enemy.y, 12, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+      for (const enemy of enemies) {
+        if (enemy.alive) drawActor(enemy, enemy.hitT > 0 ? '#ffcdd2' : '#ef5350', '敌');
       }
     }
 
@@ -1110,7 +1177,13 @@ function autoAim() {
       const d = dist2(rp.x, rp.y, netMe.x, netMe.y);
       if (d < best) { best = d; tx = rp.x; ty = rp.y; }
     }
-  } else if (enemy && enemy.alive) { tx = enemy.x; ty = enemy.y; }
+  } else {
+    for (const enemy of enemies) {
+      if (!enemy.alive) continue;
+      const d = dist2(enemy.x, enemy.y, player.x, player.y);
+      if (d < best) { best = d; tx = enemy.x; ty = enemy.y; }
+    }
+  }
   if (tx !== null) { touchInput.ax = tx; touchInput.ay = ty; touchInput.aimActive = true; }
 }
 
@@ -1169,12 +1242,13 @@ function gameOverLocal() {
 window.addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
   keys[k] = true;
-  if (k === 'p' && (state === 'playing' || state === 'paused') && mode === 'local') {
+  if (k === 'p' && (state === 'playing' || state === 'paused') && mode !== 'net') {
     state = state === 'playing' ? 'paused' : 'playing';
   }
   if (k === 'm') muted = !muted;
   if (k === 'enter') {
-    if (state === 'menu' || (state === 'results' && mode === 'local')) startGame();
+    if (state === 'menu') startCampaign();
+    if (state === 'results' && mode !== 'net') startCampaign();
   }
   if (k === ' ') e.preventDefault();
 });
@@ -1192,22 +1266,26 @@ cv.addEventListener('contextmenu', e => e.preventDefault());
 
 function startGame() {
   initAudio();
-  if (wsReady) {
-    // 联机：等待服务器 countdown（按钮仅表示就绪）
-    netSend({ t: 'join' });
-    showStatus('已加入镜林，等待其他玩家……', 3000);
-    document.getElementById('menu').classList.add('hidden');
-    state = 'lobby';
-  } else {
-    // 单机直开
-    mode = 'local';
-    resetGame();
-    state = 'playing';
-    document.getElementById('menu').classList.add('hidden');
-    document.getElementById('over').classList.add('hidden');
-  }
+  if (!wsReady) { showStatus('联机服务器未连接，请稍后再试', 2500); return; }
+  mirrorBreakable = document.getElementById('mirrorBreakToggle').checked;
+  netSend({ t: 'settings', mirrorBreakable });
+  netSend({ t: 'join' });
+  mode = 'net';
+  showStatus('已加入镜林，等待其他玩家……', 3000);
+  document.getElementById('menu').classList.add('hidden');
+  state = 'lobby';
+}
+function startCampaign() {
+  initAudio();
+  mirrorBreakable = document.getElementById('mirrorBreakToggle').checked;
+  mode = 'campaign';
+  resetGame();
+  state = 'playing';
+  document.getElementById('menu').classList.add('hidden');
+  document.getElementById('over').classList.add('hidden');
 }
 document.getElementById('btnStart').addEventListener('click', startGame);
+document.getElementById('btnCampaign').addEventListener('click', startCampaign);
 document.getElementById('btnShare').addEventListener('click', () => {
   const url = location.href;
   const done = () => showStatus('房间链接已复制，发给朋友即可加入 🌐', 3200);
@@ -1218,7 +1296,7 @@ document.getElementById('btnShare').addEventListener('click', () => {
 });
 document.getElementById('over').addEventListener('click', e => {
   if (e.target.tagName === 'BUTTON' || mode === 'net') return;
-  if (state === 'results' && mode === 'local') startGame();
+  if (state === 'results' && mode !== 'net') startCampaign();
 });
 
 /* ---------- Service Worker（PWA 离线 + 可安装） ---------- */

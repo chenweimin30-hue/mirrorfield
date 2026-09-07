@@ -147,7 +147,8 @@ let room = {
   players: new Map(), // id -> P
   mirrors: [], bullets: [], powerups: [],
   deadline: 0, countdownEnd: 0, roundEnd: 0,
-  puSpawnT: 0
+  puSpawnT: 0,
+  mirrorBreakable: true
 };
 
 function makeMirror(cx, cy, len, type) {
@@ -248,8 +249,8 @@ function serverFire(p, dx, dy) {
   const mk = (ang) => {
     const c = Math.cos(ang), s = Math.sin(ang);
     room.bullets.push({
-      // 生成点在体内 6px：避免贴脸目标时子弹直接生成在其身后（贴脸盲区 bug）
-      x: p.x + c * 6, y: p.y + s * 6,
+      // 生成点在枪口位置（体外 p.r+16px）：与客户端枪头方向保持一致
+      x: p.x + c * (p.r + 16), y: p.y + s * (p.r + 16),
       vx: c * 9.5, vy: s * 9.5, owner: p.id, color: p.color,
       r: 3.5, bounces: 0, life: 600, pierce: p.pierceT > 0
     });
@@ -271,14 +272,19 @@ function stepBullets(dt) {
         const c = closestOnSeg(b.x, b.y, m.x1, m.y1, m.x2, m.y2);
         const d = Math.hypot(b.x - c.x, b.y - c.y), min = 4 + b.r;
         if (d < min) {
-          if (b.pierce) { room.mirrors.splice(mi, 1); broadcast({ t: 'shatter', i: mi }); continue; }
+          if (b.pierce) {
+            if (!room.mirrorBreakable) continue;
+            room.mirrors.splice(mi, 1); broadcast({ t: 'shatter', i: mi }); continue;
+          }
           const r = reflect(b.vx, b.vy, m);
           b.vx = r.x; b.vy = r.y;
           if (d < 1e-4) b.x += min;
           else { b.x = c.x + (b.x - c.x) / d * (min + .5); b.y = c.y + (b.y - c.y) / d * (min + .5); }
           b.bounces++;
-          m.hp--;
-          if (m.hp <= 0) { room.mirrors.splice(mi, 1); broadcast({ t: 'shatter', i: mi }); }
+          if (room.mirrorBreakable) {
+            m.hp--;
+            if (m.hp <= 0) { room.mirrors.splice(mi, 1); broadcast({ t: 'shatter', i: mi }); }
+          }
           break;
         }
       }
@@ -359,7 +365,8 @@ function tick() {
         p.triT = 0; p.shieldT = 0; p.pierceT = 0; p.cool = 0; p.inv = 2; // 开局 2s 无敌
         i++;
       }
-      broadcast({ t: 'countdown', mirrors: room.mirrors, startAt: room.countdownEnd });
+      broadcast({ t: 'countdown', mirrors: room.mirrors, startAt: room.countdownEnd,
+                  mirrorBreakable: room.mirrorBreakable });
     }
   } else if (room.phase === 'countdown') {
     if (now >= room.countdownEnd) {
@@ -427,6 +434,13 @@ function onMessage(ws, msg) {
   const p = room.players.get(ws.id);
   if (!p) { if (msg.t === 'join') roomJoin(ws); return; }
   switch (msg.t) {
+    case 'settings': {
+      if (room.phase === 'lobby' && typeof msg.mirrorBreakable === 'boolean') {
+        room.mirrorBreakable = msg.mirrorBreakable;
+        broadcast({ t: 'mirror-setting', mirrorBreakable: room.mirrorBreakable });
+      }
+      break;
+    }
     case 'input': {
       if (typeof msg.mx === 'number') p.input.mx = clamp(msg.mx, -1, 1);
       if (typeof msg.my === 'number') p.input.my = clamp(msg.my, -1, 1);

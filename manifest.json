@@ -1,7 +1,7 @@
 {
   "name": "镜原 Mirrorfield",
   "short_name": "镜原",
-  "description": "草原镜林多人对战：子弹沿镜面反弹，最多10人同场竞技",
+  "description": "草原镜林对战：子弹沿镜面反弹，支持10人联机与人机20关挑战",
   "start_url": "./index.html",
   "display": "fullscreen",
   "orientation": "landscape",
