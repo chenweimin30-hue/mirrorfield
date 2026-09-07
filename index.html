@@ -81,6 +81,7 @@
       <div class="stat" id="overStat"></div>
       <table id="boardTable"></table>
       <button id="btnAgain">再来一局</button>
+      <button id="btnExit" class="secondary-btn" style="margin-top:12px;">返回菜单</button>
       <div class="tip" id="nextRoundTip"></div>
     </div>
     <div class="overlay hidden" id="disconnect">
@@ -99,7 +100,7 @@
 
 let W = 960, H = 640, HEDGE = 18;
 let mapSizeMode = 'screen';
-const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);  // 超大地图，贪吃蛇式自由游走 + 镜头跟随
+const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (window.matchMedia && matchMedia('(pointer: coarse)').matches);
 let viewW = 960, viewH = 640;           // 可视窗口（逻辑像素）
 let camX = 0, camY = 0;                 // 镜头左上角（世界坐标）
 const cv = document.getElementById('cv');
@@ -928,8 +929,7 @@ function render() {
     ctx.setTransform(sx, 0, 0, sy, 0, 0);
 
     drawHud();
-    // 触屏控件用 CSS 像素，重置变换
-    ctx.setTransform(window.devicePixelRatio || 1, 0, 0, window.devicePixelRatio || 1, 0, 0);
+    // 触屏控件与 HUD 同一逻辑坐标系，保证竖屏/横屏都正确显示
     drawTouchUI();
 
     if (hurtFlash > 0) { ctx.fillStyle = `rgba(244,67,54,${hurtFlash * .28})`; ctx.fillRect(0, 0, viewW, viewH); }
@@ -953,39 +953,43 @@ function render() {
 const joyMove = { active: false, id: -1, cx: 0, cy: 0, dx: 0, dy: 0 };
 const joyFire = { active: false, id: -1 };
 function drawTouchUI() {
+  // 始终在触屏设备上显示虚拟摇杆（逻辑坐标，与 HUD 一致）
   if (!isTouch && !touchInput.active) return;
-  const r = cv.getBoundingClientRect();
-  const sw = r.width, sh = r.height;
+  const sw = viewW, sh = viewH;
+  const baseX = 90, baseY = sh - 90;
   if (joyMove.active) {
-    ctx.globalAlpha = .25;
+    const r = cv.getBoundingClientRect();
+    const lx = (joyMove.cx / Math.max(r.width, 1)) * viewW;
+    const ly = (joyMove.cy / Math.max(r.height, 1)) * viewH;
+    ctx.globalAlpha = .28;
     ctx.fillStyle = '#000';
-    ctx.beginPath(); ctx.arc(joyMove.cx, joyMove.cy, 52, 0, 7); ctx.fill();
-    ctx.globalAlpha = .5;
+    ctx.beginPath(); ctx.arc(lx, ly, 54, 0, 7); ctx.fill();
+    ctx.globalAlpha = .55;
     ctx.fillStyle = '#fff';
-    const d = Math.min(Math.hypot(joyMove.dx, joyMove.dy), 40);
+    const d = Math.min(Math.hypot(joyMove.dx, joyMove.dy), 42);
     const a = Math.atan2(joyMove.dy, joyMove.dx);
-    ctx.beginPath(); ctx.arc(joyMove.cx + Math.cos(a) * d, joyMove.cy + Math.sin(a) * d, 22, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(lx + Math.cos(a) * d, ly + Math.sin(a) * d, 24, 0, 7); ctx.fill();
     ctx.globalAlpha = 1;
   } else {
-    ctx.globalAlpha = .15;
+    ctx.globalAlpha = .22;
     ctx.fillStyle = '#000';
-    ctx.beginPath(); ctx.arc(110, sh - 110, 52, 0, 7); ctx.fill();
-    ctx.globalAlpha = .35;
+    ctx.beginPath(); ctx.arc(baseX, baseY, 54, 0, 7); ctx.fill();
+    ctx.globalAlpha = .45;
     ctx.fillStyle = '#fff';
-    ctx.beginPath(); ctx.arc(110, sh - 110, 22, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(baseX, baseY, 24, 0, 7); ctx.fill();
     ctx.globalAlpha = 1;
-    ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.font = 'bold 13px system-ui'; ctx.textAlign = 'center';
-    ctx.fillText('移动', 110, sh - 30);
+    ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.font = 'bold 14px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText('移动', baseX, baseY + 48);
   }
-  const fb = { x: sw - 100, y: sh - 100, r: 46 };
-  ctx.globalAlpha = joyFire.active ? .55 : .28;
+  const fb = { x: sw - 90, y: sh - 90, r: 48 };
+  ctx.globalAlpha = joyFire.active ? .6 : .32;
   ctx.fillStyle = joyFire.active ? '#ffeb3b' : '#000';
   ctx.beginPath(); ctx.arc(fb.x, fb.y, fb.r, 0, 7); ctx.fill();
   ctx.globalAlpha = 1;
   ctx.fillStyle = '#fff'; ctx.font = 'bold 15px system-ui'; ctx.textAlign = 'center';
   ctx.fillText('射击', fb.x, fb.y + 5);
-  const db = { x: sw - 190, y: sh - 70, r: 32 };
-  ctx.globalAlpha = .28; ctx.fillStyle = '#81d4fa';
+  const db = { x: sw - 175, y: sh - 70, r: 34 };
+  ctx.globalAlpha = .32; ctx.fillStyle = '#81d4fa';
   ctx.beginPath(); ctx.arc(db.x, db.y, db.r, 0, 7); ctx.fill();
   ctx.globalAlpha = 1;
   ctx.fillStyle = '#fff'; ctx.font = 'bold 13px system-ui';
@@ -1204,6 +1208,15 @@ document.getElementById('btnAgain').onclick = () => {
     state = 'playing';
   } else {
     location.reload();
+  }
+};
+document.getElementById('btnExit').onclick = () => {
+  document.getElementById('over').classList.add('hidden');
+  state = 'menu';
+  mode = 'solo';
+  document.getElementById('menu').classList.remove('hidden');
+  if (typeof ws !== 'undefined' && ws && ws.readyState === 1) {
+    try { ws.close(); } catch (e) {}
   }
 };
 
