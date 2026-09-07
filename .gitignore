@@ -7,6 +7,7 @@ mirrorfield-PWA.zip
 
 # Capacitor / 原生构建产物
 node_modules/
+www/
 android/
 ios/
 .capacitor/

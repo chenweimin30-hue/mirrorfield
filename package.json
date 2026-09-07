@@ -5,14 +5,15 @@
   "private": true,
   "scripts": {
     "start": "node server.js",
-    "cap:init": "npx cap init \"镜原 Mirrorfield\" com.mirrorfield.game --web-dir .",
-    "cap:add:android": "npx cap add android",
-    "cap:add:ios": "npx cap add ios",
-    "cap:sync": "npx cap sync",
+    "prepare:www": "mkdir -p www && cp index.html manifest.json sw.js icon.svg www/",
+    "cap:init": "npx cap init \"镜原 Mirrorfield\" com.mirrorfield.game --web-dir www",
+    "cap:add:android": "npm run prepare:www && npx cap add android",
+    "cap:add:ios": "npm run prepare:www && npx cap add ios",
+    "cap:sync": "npm run prepare:www && npx cap sync",
     "cap:open:android": "npx cap open android",
     "cap:open:ios": "npx cap open ios",
-    "build:android": "npx cap sync android && npx cap open android",
-    "build:ios": "npx cap sync ios && npx cap open ios"
+    "build:android": "npm run prepare:www && npx cap sync android && npx cap open android",
+    "build:ios": "npm run prepare:www && npx cap sync ios && npx cap open ios"
   },
   "dependencies": {
     "@capacitor/android": "^6.2.0",

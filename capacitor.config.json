@@ -1,7 +1,7 @@
 {
   "appId": "com.mirrorfield.game",
   "appName": "镜原 Mirrorfield",
-  "webDir": ".",
+  "webDir": "www",
   "server": {
     "androidScheme": "https",
     "cleartext": true

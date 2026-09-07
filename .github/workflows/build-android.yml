@@ -1,0 +1,161 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: "构建类型"
+        required: true
+        default: "debug"
+        type: choice
+        options:
+          - debug
+          - release
+  push:
+    branches: [main]
+    paths:
+      - "index.html"
+      - "manifest.json"
+      - "sw.js"
+      - "icon.svg"
+      - "capacitor.config.json"
+      - "package.json"
+      - ".github/workflows/build-android.yml"
+  release:
+    types: [published]
+
+concurrency:
+  group: build-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android licenses
+        run: yes | sdkmanager --licenses >/dev/null 2>&1 || true
+
+      - name: Install npm dependencies
+        run: npm install
+
+      - name: Prepare web assets (www)
+        run: |
+          mkdir -p www
+          cp index.html manifest.json sw.js icon.svg www/
+          # 确保相对路径资源可用
+          ls -la www/
+
+      - name: Add Capacitor Android platform
+        run: |
+          npx cap add android
+          npx cap sync android
+
+      - name: Build Debug APK
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_type == 'debug' }}
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Decode keystore (Release)
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.build_type == 'release') || github.event_name == 'release' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "未配置 ANDROID_KEYSTORE_BASE64，将回退为 Debug 签名构建"
+            echo "HAS_KEYSTORE=false" >> $GITHUB_ENV
+          else
+            echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+            echo "HAS_KEYSTORE=true" >> $GITHUB_ENV
+          fi
+
+      - name: Build Release APK (signed if secrets present)
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.build_type == 'release') || github.event_name == 'release' }}
+        working-directory: android
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          if [ "${HAS_KEYSTORE}" = "true" ]; then
+            # 写入签名配置
+            cat >> app/build.gradle << 'EOF'
+
+          android {
+              signingConfigs {
+                  release {
+                      storeFile file('release.keystore')
+                      storePassword System.getenv('KEYSTORE_PASSWORD')
+                      keyAlias System.getenv('KEY_ALIAS')
+                      keyPassword System.getenv('KEY_PASSWORD')
+                  }
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                  }
+              }
+          }
+          EOF
+            ./gradlew assembleRelease --no-daemon
+          else
+            echo "无 keystore，改用 assembleDebug"
+            ./gradlew assembleDebug --no-daemon
+          fi
+
+      - name: Locate APK
+        id: locate
+        run: |
+          DEBUG_APK=$(find android/app/build/outputs/apk -name '*.apk' -path '*/debug/*' | head -n1 || true)
+          RELEASE_APK=$(find android/app/build/outputs/apk -name '*.apk' -path '*/release/*' | head -n1 || true)
+          if [ -n "$RELEASE_APK" ]; then
+            echo "apk_path=$RELEASE_APK" >> $GITHUB_OUTPUT
+            echo "apk_name=mirrorfield-release.apk" >> $GITHUB_OUTPUT
+          elif [ -n "$DEBUG_APK" ]; then
+            echo "apk_path=$DEBUG_APK" >> $GITHUB_OUTPUT
+            echo "apk_name=mirrorfield-debug.apk" >> $GITHUB_OUTPUT
+          else
+            echo "未找到 APK 文件"
+            find android/app/build/outputs -type f || true
+            exit 1
+          fi
+          echo "Found: $(cat $GITHUB_OUTPUT)"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.locate.outputs.apk_name }}
+          path: ${{ steps.locate.outputs.apk_path }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Summary
+        run: |
+          echo "### 镜原 Android APK 构建完成" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- 产物: \`${{ steps.locate.outputs.apk_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- 下载: 打开本 Workflow 的 Artifacts 区域" >> $GITHUB_STEP_SUMMARY
+          echo "- 说明: Debug 可直接安装；Release 需配置仓库 Secrets 才会正式签名" >> $GITHUB_STEP_SUMMARY
