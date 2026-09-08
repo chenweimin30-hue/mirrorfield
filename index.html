@@ -53,6 +53,20 @@
   .secondary-btn{margin-top:14px;background:linear-gradient(135deg,#26c6da,#00838f);
                  box-shadow:0 4px 18px rgba(0,172,193,.35);}
   #disconnect{position:absolute;inset:0;z-index:30;display:none;}
+  /* 小屏横屏（如来一局/菜单）优化：避免内容溢出 */
+  @media (max-height: 420px) {
+    .overlay{padding:8px 12px;justify-content:flex-start;}
+    h1{font-size:min(28px,7vw);letter-spacing:3px;}
+    h1 small{font-size:12px;margin-top:3px;}
+    .desc{font-size:13px;margin:6px 0 10px;line-height:1.5;max-width:90%;}
+    .keys{padding:8px 12px;font-size:12px;margin-bottom:10px;line-height:1.7;}
+    button{font-size:15px;padding:8px 28px;}
+    .stat{font-size:14px;margin-bottom:8px;}
+    .stat span{font-size:18px;}
+    #boardTable{font-size:12px;margin:4px 0 8px;}
+    .legend{font-size:11px;gap:8px;margin-top:4px;}
+    #lobbyList{gap:6px;margin:6px 0 10px;}
+  }
 </style>
 </head>
 <body>
@@ -125,6 +139,8 @@ function fit() {
   window.__sy = cv.height / viewH;
   window.__scale = cssH / viewH;
   window.__offX = 0; window.__offY = 0;
+  // 屏幕大小地图随屏幕尺寸更新，防止旋转后留黑；同时把实体推回新边界内
+  if (typeof applyMapSize === 'function') applyMapSize(true);
   applyCameraTransform();
 }
 function updateCamera(px, py) {
@@ -149,13 +165,32 @@ function touchScreen(t) {
   return { x: t.clientX - r.left, y: t.clientY - r.top, rw: r.width, rh: r.height };
 }
 
-function applyMapSize() {
+function applyMapSize(fromResize) {
   const sel = document.querySelector('input[name="mapSize"]:checked');
+  const prevW = W, prevH = H;
   mapSizeMode = (sel && sel.value) || 'screen';
   if (mapSizeMode === 'screen') { W = Math.round(viewW || 960); H = Math.round(viewH || 640); }
   else if (mapSizeMode === 'medium') { W = 1600; H = 1066; }
   else { W = 2560; H = 1706; }
   if (typeof paintGround === 'function') paintGround();
+  // 尺寸变化较大时（如横竖屏切换）重新铺场并把实体推回新边界，避免留黑或出界
+  if (fromResize && (Math.abs(W - prevW) > 40 || Math.abs(H - prevH) > 40)) {
+    if (state === 'playing' || state === 'results') {
+      genMirrors();
+      powerups = [];
+      bullets = [];
+      if (player) {
+        player.x = clamp(player.x, HEDGE + player.r, W - HEDGE - player.r);
+        player.y = clamp(player.y, HEDGE + player.r, H - HEDGE - player.r);
+      }
+      for (const e of enemies) {
+        if (!e.alive) continue;
+        e.x = clamp(e.x, HEDGE + e.r, W - HEDGE - e.r);
+        e.y = clamp(e.y, HEDGE + e.r, H - HEDGE - e.r);
+      }
+      floats.push({ x: W / 2, y: 120, txt: '地图已适配屏幕', life: 90, color: '#81d4fa' });
+    }
+  }
 }
 window.addEventListener('resize', fit);
 
@@ -352,8 +387,7 @@ function genMirrors() {
 }
 
 function resetGame() {
-  if (typeof applyMapSize==='function') applyMapSize();
-  if (typeof applyMapSize==='function') applyMapSize();
+  if (typeof applyMapSize === 'function') applyMapSize();
   genMirrors();
   player = { x: 100, y: 100, r: 14, hp: 100, aim: 0, cool: 0, speed: 3.3, inv: 0,
              dashCd: 0, dashT: 0, dashDx: 0, dashDy: 0, triT: 0, shieldT: 0, pierceT: 0, rapidT: 0 };
@@ -1158,7 +1192,7 @@ cv.addEventListener('mouseup', () => { mouse.down = false; });
 
 /* ---------- 草地背景 ---------- */
 const ground = document.createElement('canvas');
-(function paintGround() {
+function paintGround() {
   ground.width = W; ground.height = H;
   const g = ground.getContext('2d');
   const grad = g.createLinearGradient(0, 0, 0, H);
@@ -1190,7 +1224,8 @@ const ground = document.createElement('canvas');
   g.fillRect(0, 0, HEDGE, H); g.fillRect(W - HEDGE, 0, HEDGE, H);
   g.strokeStyle = 'rgba(0,0,0,.25)'; g.lineWidth = 2;
   g.strokeRect(HEDGE, HEDGE, W - HEDGE * 2, H - HEDGE * 2);
-})();
+}
+paintGround();
 
 /* ---------- 启动 ---------- */
 document.getElementById('btnSolo').onclick = () => {
