@@ -10,11 +10,12 @@
 <link rel="manifest" href="manifest.json">
 <title>镜原 Mirrorfield · 联机版</title>
 <style>
-  html,body{margin:0;padding:0;height:100%;background:#2e3b2a;font-family:system-ui,"Segoe UI","Microsoft YaHei",sans-serif;
-            overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;}
-  #wrap{position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;}
-  #stage{position:relative;width:100%;height:100%;}
-  canvas{display:block;width:100%;height:100%;background:#7cb342;touch-action:none;}
+  html,body{margin:0;padding:0;width:100%;height:100%;height:100dvh;background:#2e3b2a;font-family:system-ui,"Segoe UI","Microsoft YaHei",sans-serif;
+            overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;
+            position:fixed;inset:0;}
+  #wrap{position:fixed;inset:0;width:100%;height:100%;display:block;}
+  #stage{position:absolute;inset:0;width:100%;height:100%;}
+  canvas{display:block;position:absolute;inset:0;width:100% !important;height:100% !important;background:#7cb342;touch-action:none;}
   .overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;
            border-radius:10px;color:#fff;background:rgba(20,32,18,.78);backdrop-filter:blur(3px);cursor:default;z-index:5;padding:16px;box-sizing:border-box;overflow:auto;}
   .hidden{display:none !important;}
@@ -111,14 +112,18 @@ const stage = document.getElementById('stage');
 function fit() {
   const r = stage.getBoundingClientRect();
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  cv.width = r.width * dpr; cv.height = r.height * dpr;
-  cv.style.width = r.width + 'px'; cv.style.height = r.height + 'px';
-  // 可视区域高度固定 640 逻辑像素，宽度按屏幕比例延伸（贪吃蛇式镜头）
+  const cssW = Math.max(1, r.width);
+  const cssH = Math.max(1, r.height);
+  cv.width = Math.round(cssW * dpr);
+  cv.height = Math.round(cssH * dpr);
+  cv.style.width = cssW + 'px';
+  cv.style.height = cssH + 'px';
+  // 逻辑高度固定 640，宽度按真实屏幕比例，保证横竖屏都铺满
   viewH = 640;
-  viewW = Math.max(480, viewH * (r.width / Math.max(r.height, 1)));
-  window.__sx = (r.width * dpr) / viewW;
-  window.__sy = (r.height * dpr) / viewH;
-  window.__scale = r.height / viewH;
+  viewW = Math.max(480, Math.round(viewH * (cssW / cssH)));
+  window.__sx = cv.width / viewW;
+  window.__sy = cv.height / viewH;
+  window.__scale = cssH / viewH;
   window.__offX = 0; window.__offY = 0;
   applyCameraTransform();
 }
@@ -325,7 +330,7 @@ function showResults(board) {
 function makeMirror(cx, cy, len, type) {
   const s = len / 2 * Math.SQRT1_2;
   const dx = s, dy = type === '/' ? -s : s;
-  return { x1: cx - dx, y1: cy - dy, x2: cx + dx, y2: cy + dy, type, hp: 3 };
+  return { x1: cx - dx, y1: cy - dy, x2: cx + dx, y2: cy + dy, type, hp: 3, broken: false, respawnAt: 0 };
 }
 function genMirrors() {
   mirrors = [];
@@ -577,18 +582,17 @@ function updateBullets() {
     if (b.owner === 'e') activeEnemyBullets++;
     // 镜面反弹
     for (const m of mirrors) {
+      if (m.broken) continue;
       const c = closestOnSeg(b.x, b.y, m.x1, m.y1, m.x2, m.y2);
       if (Math.hypot(b.x - c.x, b.y - c.y) < b.r + 3) {
         const r = reflect(b.vx, b.vy, m);
         b.vx = r.x; b.vy = r.y;
         b.bounces++;
         b.x += b.vx * 2; b.y += b.vy * 2;
-        if (mirrorBreakable && m.hp > 0) {
+        if (mirrorBreakable && !m.broken && m.hp > 0) {
           m.hp--;
           if (m.hp <= 0) {
-            mirrors = mirrors.filter(mm => mm !== m);
-            spark(c.x, c.y, '#90a4ae', 18, 40);
-            beep(200, .15, 'triangle', .1);
+            shatterMirror(m, c.x, c.y);
           }
         }
         break;
@@ -732,6 +736,7 @@ function netApplySnapshot() {
 
 /* ---------- 绘制 ---------- */
 function drawMirror(m) {
+  if (m.broken) return;
   ctx.strokeStyle = m.hp < 3 ? `rgba(144,164,174,${0.4 + m.hp * 0.2})` : '#90a4ae';
   ctx.lineWidth = 7;
   ctx.lineCap = 'round';
@@ -1104,6 +1109,7 @@ function loop() {
       updatePlayerLocal();
       for (const e of enemies) updateEnemy(e);
       updateBullets();
+      updateMirrorsLocal();
       updatePowerups();
       for (const p of particles) { p.x += p.vx; p.y += p.vy; p.life--; }
       particles = particles.filter(p => p.life > 0);
