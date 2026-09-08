@@ -15,7 +15,7 @@
             position:fixed;inset:0;}
   #wrap{position:fixed;inset:0;width:100%;height:100%;display:block;}
   #stage{position:absolute;inset:0;width:100%;height:100%;}
-  canvas{display:block;position:absolute;inset:0;width:100% !important;height:100% !important;background:#7cb342;touch-action:none;}
+  canvas{display:block;position:absolute;left:0;top:0;width:100%;height:100%;background:#7cb342;touch-action:none;}
   .overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;
            border-radius:10px;color:#fff;background:rgba(20,32,18,.78);backdrop-filter:blur(3px);cursor:default;z-index:5;padding:16px;box-sizing:border-box;overflow:auto;}
   .hidden{display:none !important;}
@@ -67,6 +67,10 @@
     .legend{font-size:11px;gap:8px;margin-top:4px;}
     #lobbyList{gap:6px;margin:6px 0 10px;}
   }
+  /* 横屏提示：强制要求竖屏游玩 */
+  #rotate{position:absolute;inset:0;z-index:40;display:none;background:#1a2616;color:#fff;align-items:center;justify-content:center;text-align:center;padding:20px;box-sizing:border-box;}
+  #rotate p{font-size:20px;line-height:2;opacity:.9;}
+  #rotate b{font-size:42px;display:block;margin-bottom:20px;}
 </style>
 </head>
 <body>
@@ -104,6 +108,10 @@
       <div class="desc">与服务器的连接丢失，请刷新页面重新进入。</div>
       <button onclick="location.reload()">刷新页面</button>
     </div>
+    <div id="rotate">
+      <b>📱</b>
+      <p>请将手机竖过来<br>以获得最佳游戏体验</p>
+    </div>
   </div>
 </div>
 <script>
@@ -122,26 +130,51 @@ const cv = document.getElementById('cv');
 const ctx = cv.getContext('2d');
 const stage = document.getElementById('stage');
 
-// 自适应画布：保持 960x640 逻辑坐标，letterbox 填满 stage
+// 自适应画布：强制竖屏 9:16，横屏时居中留黑边并提示旋转
 function fit() {
   const r = stage.getBoundingClientRect();
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const cssW = Math.max(1, r.width);
-  const cssH = Math.max(1, r.height);
-  cv.width = Math.round(cssW * dpr);
-  cv.height = Math.round(cssH * dpr);
-  cv.style.width = cssW + 'px';
-  cv.style.height = cssH + 'px';
-  // 逻辑高度固定 640，宽度按真实屏幕比例，保证横竖屏都铺满
-  viewH = 640;
-  viewW = Math.max(480, Math.round(viewH * (cssW / cssH)));
+  let cssW = Math.max(1, r.width);
+  let cssH = Math.max(1, r.height);
+  const isLandscape = cssW > cssH;
+  // 计算可容纳的最大 9:16 竖屏区域，横屏时左右留黑
+  const targetRatio = 9 / 16;
+  const containerRatio = cssW / cssH;
+  let renderW, renderH, offX, offY;
+  if (containerRatio > targetRatio) {
+    renderH = cssH;
+    renderW = Math.round(cssH * targetRatio);
+    offX = (cssW - renderW) / 2;
+    offY = 0;
+  } else {
+    renderW = cssW;
+    renderH = Math.round(cssW / targetRatio);
+    offX = 0;
+    offY = (cssH - renderH) / 2;
+  }
+  cv.width = Math.round(renderW * dpr);
+  cv.height = Math.round(renderH * dpr);
+  cv.style.width = renderW + 'px';
+  cv.style.height = renderH + 'px';
+  cv.style.left = offX + 'px';
+  cv.style.top = offY + 'px';
+  // 逻辑分辨率固定为竖屏 480x854（9:16），UI/世界全部按竖屏设计
+  viewW = 480;
+  viewH = Math.round(viewW / targetRatio);
   window.__sx = cv.width / viewW;
   window.__sy = cv.height / viewH;
-  window.__scale = cssH / viewH;
+  window.__scale = renderH / viewH;
   window.__offX = 0; window.__offY = 0;
-  // 屏幕大小地图随屏幕尺寸更新，防止旋转后留黑；同时把实体推回新边界内
+  // 屏幕大小地图随屏幕尺寸更新
   if (typeof applyMapSize === 'function') applyMapSize(true);
   applyCameraTransform();
+  // 横屏提示
+  const rotate = document.getElementById('rotate');
+  if (rotate) rotate.style.display = isLandscape ? 'flex' : 'none';
+  // 尝试锁定竖屏（PWA 安装后有效）
+  if (screen.orientation && screen.orientation.lock && isTouch) {
+    screen.orientation.lock('portrait').catch(() => {});
+  }
 }
 function updateCamera(px, py) {
   camX = px - viewW / 2;
@@ -1025,8 +1058,14 @@ function drawTouchUI() {
   ctx.fillStyle = joyFire.active ? '#ffeb3b' : '#000';
   ctx.beginPath(); ctx.arc(fb.x, fb.y, fb.r, 0, 7); ctx.fill();
   ctx.globalAlpha = 1;
-  ctx.fillStyle = '#fff'; ctx.font = 'bold 15px system-ui'; ctx.textAlign = 'center';
-  ctx.fillText('射击', fb.x, fb.y + 5);
+  // 射击按钮用准星图标替代文字
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(fb.x, fb.y, fb.r * 0.55, 0, 7); ctx.stroke();
+  const cr = fb.r * 0.32;
+  ctx.beginPath();
+  ctx.moveTo(fb.x - cr, fb.y); ctx.lineTo(fb.x + cr, fb.y);
+  ctx.moveTo(fb.x, fb.y - cr); ctx.lineTo(fb.x, fb.y + cr);
+  ctx.stroke();
   const db = { x: sw - 175, y: sh - 70, r: 34 };
   ctx.globalAlpha = .32; ctx.fillStyle = '#81d4fa';
   ctx.beginPath(); ctx.arc(db.x, db.y, db.r, 0, 7); ctx.fill();
