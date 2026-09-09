@@ -126,8 +126,9 @@ const stage = document.getElementById('stage');
 function fit() {
   const r = stage.getBoundingClientRect();
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  let cssW = Math.max(1, r.width);
-  let cssH = Math.max(1, r.height);
+  // 取 stage 与 window 的最大尺寸，确保横屏时完全铺满无白边
+  let cssW = Math.max(1, r.width, window.innerWidth || 0);
+  let cssH = Math.max(1, r.height, window.innerHeight || 0);
   // canvas 全屏铺满
   cv.width = Math.round(cssW * dpr);
   cv.height = Math.round(cssH * dpr);
@@ -202,6 +203,10 @@ function applyMapSize(fromResize) {
   }
 }
 window.addEventListener('resize', fit);
+window.addEventListener('orientationchange', () => setTimeout(fit, 300));
+// 页面加载后延迟重算，确保 WebView 布局完成
+setTimeout(fit, 200);
+setTimeout(fit, 800);
 
 /* ---------- 工具 ---------- */
 const rnd = (a, b) => a + Math.random() * (b - a);
@@ -1106,7 +1111,7 @@ function drawTouchUI() {
   ctx.moveTo(fb.x - cr, fb.y); ctx.lineTo(fb.x + cr, fb.y);
   ctx.moveTo(fb.x, fb.y - cr); ctx.lineTo(fb.x, fb.y + cr);
   ctx.stroke();
-  const db = { x: sw - marginX - fireR - dashR - 16, y: sh - marginY + fireR * 0.35, r: dashR };
+  const db = { x: sw - marginX - fireR - dashR - 24, y: sh - marginY - fireR - dashR * 0.4, r: dashR };
   ctx.globalAlpha = .32; ctx.fillStyle = '#81d4fa';
   ctx.beginPath(); ctx.arc(db.x, db.y, db.r, 0, 7); ctx.fill();
   ctx.globalAlpha = 1;
@@ -1130,16 +1135,17 @@ cv.addEventListener('touchstart', e => {
     const fireR = 48 * scale, dashR = 34 * scale;
     // 射击按钮中心
     const fireX = s.rw - marginX, fireY = s.rh - marginY;
-    // 冲刺按钮中心
-    const dashX = s.rw - marginX - fireR - dashR - 16;
-    const dashY = s.rh - marginY + fireR * 0.35;
+    // 冲刺按钮中心（射击按钮左上方，完全错开避免触控重叠）
+    const dashX = s.rw - marginX - fireR - dashR - 24;
+    const dashY = s.rh - marginY - fireR - dashR * 0.4;
     if (s.x < s.rw / 2 && !joyMove.active) {
       joyMove.active = true; joyMove.id = t.identifier;
       joyMove.cx = s.x; joyMove.cy = s.y; joyMove.dx = 0; joyMove.dy = 0;
     } else {
-      const fd = dist2(s.x, s.y, fireX, fireY);
       const dd = dist2(s.x, s.y, dashX, dashY);
-      if (dd < (dashR + 12) * (dashR + 12) && !touchInput.dashReq) {
+      const fd = dist2(s.x, s.y, fireX, fireY);
+      // 优先判断冲刺按钮，触控区域放大
+      if (dd < (dashR + 20) * (dashR + 20) && !touchInput.dashReq) {
         touchInput.dashReq = true;
         setTimeout(() => touchInput.dashReq = false, 100);
         keys['shift'] = true;
