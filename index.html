@@ -885,17 +885,7 @@ function drawActor(o, color, label, opts) {
   }
 }
 function drawAimLine() {
-  if (!player) return;
-  const pts = tracePath(player.x, player.y, Math.cos(player.aim), Math.sin(player.aim), 3);
-  ctx.save();
-  ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1.8;
-  ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
-  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-  ctx.stroke();
-  ctx.restore();
-  const e = pts[pts.length - 1];
-  ctx.strokeStyle = 'rgba(255,255,255,.7)';
-  ctx.beginPath(); ctx.arc(e.x, e.y, 4, 0, 7); ctx.stroke();
+  // 瞄准线已取消
 }
 function drawHud() {
   const me = mode === 'net' ? netMe : player;
