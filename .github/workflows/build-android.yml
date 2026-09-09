@@ -70,6 +70,39 @@ jobs:
           npx cap add android
           npx cap sync android
 
+      - name: Enable immersive fullscreen
+        run: |
+          MAIN_ACTIVITY=$(find android/app/src/main/java -name "MainActivity.java" | head -n1)
+          echo "Found: $MAIN_ACTIVITY"
+          # 在 onCreate 方法中注入沉浸式全屏代码
+          python3 - "$MAIN_ACTIVITY" << 'INNER'
+import sys
+path = sys.argv[1]
+with open(path, 'r') as f:
+    src = f.read()
+inject = '''
+        // 沉浸式全屏：隐藏状态栏和导航栏
+        android.view.View decorView = getWindow().getDecorView();
+        int uiOptions = android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
+                | android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                | android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                | android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                | android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                | android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
+        decorView.setSystemUiVisibility(uiOptions);
+'''
+# 在 onCreate 的 super.onCreate 后注入
+src = src.replace(
+    "super.onCreate(savedInstanceState);",
+    "super.onCreate(savedInstanceState);
+" + inject
+)
+with open(path, 'w') as f:
+    f.write(src)
+print("MainActivity updated")
+INNER
+          cat "$MAIN_ACTIVITY" 
+
       - name: Build Debug APK
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_type == 'debug' }}
         working-directory: android
