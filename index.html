@@ -15,8 +15,7 @@
             position:fixed;inset:0;}
   #wrap{position:fixed;inset:0;width:100%;height:100%;display:block;}
   #stage{position:absolute;inset:0;width:100%;height:100%;}
-  canvas{display:block;position:absolute;left:0;top:0;width:100%;height:100%;background:#7cb342;touch-action:none;}
-  .overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;
+  canvas{display:block;position:absolute;left:0;top:0;width:100%;height:100%;background:#7cb342;touch-action:none;}  .overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;
            border-radius:10px;color:#fff;background:rgba(20,32,18,.78);backdrop-filter:blur(3px);cursor:default;z-index:5;padding:16px;box-sizing:border-box;overflow:auto;}
   .hidden{display:none !important;}
   h1{font-size:min(44px,9vw);margin:0 0 6px;letter-spacing:6px;text-shadow:0 3px 12px rgba(0,0,0,.6);}
@@ -124,18 +123,14 @@ const stage = document.getElementById('stage');
 
 // 自适应画布：横竖屏均全屏铺满，逻辑分辨率以短边480为基准动态计算
 function fit() {
-  const r = stage.getBoundingClientRect();
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  // 取 stage 与 window 的最大尺寸，确保横屏时完全铺满无白边
-  let cssW = Math.max(1, r.width, window.innerWidth || 0);
-  let cssH = Math.max(1, r.height, window.innerHeight || 0);
-  // canvas 全屏铺满
+  // 用 documentElement 尺寸，确保沉浸式全屏后完全铺满
+  const de = document.documentElement;
+  let cssW = Math.max(1, de.clientWidth, window.innerWidth || 0);
+  let cssH = Math.max(1, de.clientHeight, window.innerHeight || 0);
+  // canvas 像素缓冲区按全屏尺寸设置，显示尺寸由 CSS 100% 自动铺满
   cv.width = Math.round(cssW * dpr);
   cv.height = Math.round(cssH * dpr);
-  cv.style.width = cssW + 'px';
-  cv.style.height = cssH + 'px';
-  cv.style.left = '0px';
-  cv.style.top = '0px';
   // 逻辑分辨率：以短边 480 为基准，保证 UI 物理大小在横竖屏下一致
   const baseSize = 480;
   if (cssW <= cssH) {
@@ -1183,8 +1178,8 @@ cv.addEventListener('touchstart', e => {
         setTimeout(() => keys['shift'] = false, 60);
       } else if (fd < (fireR + 18) * (fireR + 18)) {
         joyFire.active = true; joyFire.id = t.identifier;
-        touchInput.fire = true; touchInput.aimActive = true;
-        touchInput.ax = w.x; touchInput.ay = w.y;
+        touchInput.fire = true;
+        // 注意：射击按钮不设置 aimActive，避免瞄准位置跳到按钮上导致漂移
       } else {
         touchInput.aimActive = true;
         touchInput.ax = w.x; touchInput.ay = w.y;
