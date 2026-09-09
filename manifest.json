@@ -4,11 +4,13 @@
   "description": "草原镜林对战：子弹沿镜面反弹，支持10人联机与人机20关挑战",
   "start_url": "./index.html",
   "display": "fullscreen",
-  "orientation": "portrait",
+  "orientation": "any",
   "background_color": "#2e3b2a",
   "theme_color": "#2e3b2a",
   "lang": "zh-CN",
-  "categories": ["games"],
+  "categories": [
+    "games"
+  ],
   "icons": [
     {
       "src": "icon.svg",
