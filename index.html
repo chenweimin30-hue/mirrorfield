@@ -730,6 +730,25 @@ function getMoveInput() {
 }
 function getAimInput() {
   if (touchInput.active && touchInput.aimActive) return { x: touchInput.ax, y: touchInput.ay };
+  // 手机触屏且未手动瞄准时，自动锁定最近敌人
+  if (touchInput.active) {
+    let tx = null, ty = null, best = 1e9;
+    const me = mode === 'net' ? netMe : player;
+    if (mode === 'net') {
+      for (const rp of netPlayers.values()) {
+        if (!rp.alive) continue;
+        const d = dist2(rp.x, rp.y, me.x, me.y);
+        if (d < best) { best = d; tx = rp.x; ty = rp.y; }
+      }
+    } else {
+      for (const enemy of enemies) {
+        if (!enemy.alive) continue;
+        const d = dist2(enemy.x, enemy.y, me.x, me.y);
+        if (d < best) { best = d; tx = enemy.x; ty = enemy.y; }
+      }
+    }
+    if (tx !== null) return { x: tx, y: ty };
+  }
   return { x: mouse.x, y: mouse.y };
 }
 function getFireInput() {
@@ -1353,6 +1372,15 @@ document.getElementById('btnExit').onclick = () => {
 };
 
 fit();
+// 尝试进入全屏（WebView/浏览器双保险）
+function tryFullscreen() {
+  const el = document.documentElement;
+  if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
+  else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+  else if (el.msRequestFullscreen) el.msRequestFullscreen();
+}
+document.addEventListener('click', tryFullscreen, { once: true });
+document.addEventListener('touchstart', tryFullscreen, { once: true });
 loop();
 </script>
 </body>
