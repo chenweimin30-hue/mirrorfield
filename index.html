@@ -714,7 +714,7 @@ function updatePowerups() {
       x = rnd(HEDGE + 60, W - HEDGE - 60); y = rnd(HEDGE + 60, H - HEDGE - 60);
       tries++;
     } while (tries < 50 && (dist2(x, y, player.x, player.y) < 130 * 130));
-    powerups.push({ x, y, r: 11, type, color: colors[type], life: 900 });
+    powerups.push({ x, y, r: 14, type, color: colors[type], life: 900 });
     spawnT = 8;
   }
 }
@@ -793,66 +793,72 @@ function drawMirror(m) {
   ctx.beginPath(); ctx.moveTo(m.x1, m.y1); ctx.lineTo(m.x2, m.y2); ctx.stroke();
 }
 function drawPowerup(p) {
-  const pulse = 1 + .12 * Math.sin(performance.now() / 160 + p.x);
-  const r = p.r;
+  const pulse = 1 + .15 * Math.sin(performance.now() / 160 + p.x);
+  const r = p.r * 1.4; // 道具整体放大
+  const x = p.x, y = p.y;
   // 阴影
-  ctx.fillStyle = 'rgba(0,0,0,.2)';
-  ctx.beginPath(); ctx.ellipse(p.x, p.y + 9, r * .9, r * .35, 0, 0, 7); ctx.fill();
-  // 外圈光晕
-  ctx.fillStyle = p.color + '44';
-  ctx.beginPath(); ctx.arc(p.x, p.y, r * pulse * 1.3, 0, 7); ctx.fill();
-  // 主体
+  ctx.fillStyle = 'rgba(0,0,0,.25)';
+  ctx.beginPath(); ctx.ellipse(x, y + r * 0.7, r * 1.1, r * 0.4, 0, 0, 7); ctx.fill();
+  // 径向光晕
+  const grad = ctx.createRadialGradient(x, y, 0, x, y, r * 1.9 * pulse);
+  grad.addColorStop(0, p.color + 'bb');
+  grad.addColorStop(0.45, p.color + '44');
+  grad.addColorStop(1, p.color + '00');
+  ctx.fillStyle = grad;
+  ctx.beginPath(); ctx.arc(x, y, r * 1.9 * pulse, 0, 7); ctx.fill();
+  // 直接画大图标形状（无圆圈包裹）
   ctx.fillStyle = p.color;
-  ctx.beginPath(); ctx.arc(p.x, p.y, r * pulse, 0, 7); ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.arc(p.x, p.y, r * pulse, 0, 7); ctx.stroke();
-  // 专属图标
-  ctx.fillStyle = '#fff';
   ctx.strokeStyle = '#fff';
-  ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  const ir = r * 0.55;
+  ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   if (p.type === 'heal') {
-    // 十字
-    ctx.fillRect(p.x - ir * 0.35, p.y - ir, ir * 0.7, ir * 2);
-    ctx.fillRect(p.x - ir, p.y - ir * 0.35, ir * 2, ir * 0.7);
+    // 大十字
+    const w = r * 0.5, h = r * 1.1;
+    ctx.fillRect(x - w/2, y - h, w, h*2);
+    ctx.fillRect(x - h, y - w/2, h*2, w);
+    ctx.strokeRect(x - w/2, y - h, w, h*2);
+    ctx.strokeRect(x - h, y - w/2, h*2, w);
   } else if (p.type === 'rapid') {
-    // 闪电
+    // 大闪电
     ctx.beginPath();
-    ctx.moveTo(p.x + ir * 0.2, p.y - ir);
-    ctx.lineTo(p.x - ir * 0.5, p.y + ir * 0.1);
-    ctx.lineTo(p.x - ir * 0.1, p.y + ir * 0.1);
-    ctx.lineTo(p.x - ir * 0.2, p.y + ir);
-    ctx.lineTo(p.x + ir * 0.5, p.y - ir * 0.1);
-    ctx.lineTo(p.x + ir * 0.1, p.y - ir * 0.1);
-    ctx.closePath(); ctx.fill();
+    ctx.moveTo(x + r*0.3, y - r*1.2);
+    ctx.lineTo(x - r*0.7, y + r*0.15);
+    ctx.lineTo(x - r*0.15, y + r*0.15);
+    ctx.lineTo(x - r*0.3, y + r*1.2);
+    ctx.lineTo(x + r*0.7, y - r*0.15);
+    ctx.lineTo(x + r*0.15, y - r*0.15);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
   } else if (p.type === 'triple') {
-    // 三个点
-    ctx.beginPath(); ctx.arc(p.x, p.y - ir * 0.5, ir * 0.35, 0, 7); ctx.fill();
-    ctx.beginPath(); ctx.arc(p.x - ir * 0.6, p.y + ir * 0.4, ir * 0.35, 0, 7); ctx.fill();
-    ctx.beginPath(); ctx.arc(p.x + ir * 0.6, p.y + ir * 0.4, ir * 0.35, 0, 7); ctx.fill();
+    // 三个大圆点
+    const pr = r * 0.45;
+    ctx.beginPath(); ctx.arc(x, y - r*0.6, pr, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x - r*0.75, y + r*0.5, pr, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x + r*0.75, y + r*0.5, pr, 0, 7); ctx.fill(); ctx.stroke();
   } else if (p.type === 'shield') {
-    // 盾牌
+    // 大盾牌
     ctx.beginPath();
-    ctx.moveTo(p.x, p.y - ir);
-    ctx.lineTo(p.x + ir * 0.8, p.y - ir * 0.5);
-    ctx.lineTo(p.x + ir * 0.7, p.y + ir * 0.4);
-    ctx.quadraticCurveTo(p.x, p.y + ir * 1.1, p.x - ir * 0.7, p.y + ir * 0.4);
-    ctx.lineTo(p.x - ir * 0.8, p.y - ir * 0.5);
-    ctx.closePath(); ctx.fill();
+    ctx.moveTo(x, y - r*1.2);
+    ctx.lineTo(x + r*0.95, y - r*0.6);
+    ctx.lineTo(x + r*0.85, y + r*0.5);
+    ctx.quadraticCurveTo(x, y + r*1.3, x - r*0.85, y + r*0.5);
+    ctx.lineTo(x - r*0.95, y - r*0.6);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
   } else if (p.type === 'pierce') {
-    // 箭头穿透
+    // 大箭头穿透
+    ctx.lineWidth = 5;
     ctx.beginPath();
-    ctx.moveTo(p.x - ir, p.y);
-    ctx.lineTo(p.x + ir * 0.5, p.y);
+    ctx.moveTo(x - r*1.1, y);
+    ctx.lineTo(x + r*0.6, y);
     ctx.stroke();
+    ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(p.x + ir * 0.1, p.y - ir * 0.5);
-    ctx.lineTo(p.x + ir * 0.7, p.y);
-    ctx.lineTo(p.x + ir * 0.1, p.y + ir * 0.5);
-    ctx.stroke();
+    ctx.moveTo(x + r*0.15, y - r*0.65);
+    ctx.lineTo(x + r*0.85, y);
+    ctx.lineTo(x + r*0.15, y + r*0.65);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.lineWidth = 4;
     ctx.beginPath();
-    ctx.moveTo(p.x + ir * 0.5, p.y - ir * 0.3);
-    ctx.lineTo(p.x + ir, p.y + ir * 0.3);
+    ctx.moveTo(x + r*0.6, y - r*0.4);
+    ctx.lineTo(x + r*1.2, y + r*0.4);
     ctx.stroke();
   }
 }
@@ -1010,7 +1016,7 @@ function render() {
         }
       }
     } else {
-      if (player) drawAimLine();
+      if (player) { /* drawAimLine(); */ }
       if (player) drawActor(player, player.inv > 0 && (player.inv >> 2) % 2 === 0 ? 'rgba(66,165,245,.4)' : '#42a5f5', '你', { me: true, shield: player.shieldT > 0 });
       for (const enemy of enemies) {
         if (enemy.alive) drawActor(enemy, enemy.hitT > 0 ? '#ffcdd2' : '#ef5350', '敌');
