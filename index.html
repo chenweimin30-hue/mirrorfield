@@ -67,10 +67,6 @@
     .legend{font-size:11px;gap:8px;margin-top:4px;}
     #lobbyList{gap:6px;margin:6px 0 10px;}
   }
-  /* 横屏提示：强制要求竖屏游玩 */
-  #rotate{position:absolute;inset:0;z-index:40;display:none;background:#1a2616;color:#fff;align-items:center;justify-content:center;text-align:center;padding:20px;box-sizing:border-box;}
-  #rotate p{font-size:20px;line-height:2;opacity:.9;}
-  #rotate b{font-size:42px;display:block;margin-bottom:20px;}
 </style>
 </head>
 <body>
@@ -108,10 +104,6 @@
       <div class="desc">与服务器的连接丢失，请刷新页面重新进入。</div>
       <button onclick="location.reload()">刷新页面</button>
     </div>
-    <div id="rotate">
-      <b>📱</b>
-      <p>请将手机竖过来<br>以获得最佳游戏体验</p>
-    </div>
   </div>
 </div>
 <script>
@@ -130,51 +122,35 @@ const cv = document.getElementById('cv');
 const ctx = cv.getContext('2d');
 const stage = document.getElementById('stage');
 
-// 自适应画布：强制竖屏 9:16，横屏时居中留黑边并提示旋转
+// 自适应画布：横竖屏均全屏铺满，逻辑分辨率以短边480为基准动态计算
 function fit() {
   const r = stage.getBoundingClientRect();
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   let cssW = Math.max(1, r.width);
   let cssH = Math.max(1, r.height);
-  const isLandscape = cssW > cssH;
-  // 计算可容纳的最大 9:16 竖屏区域，横屏时左右留黑
-  const targetRatio = 9 / 16;
-  const containerRatio = cssW / cssH;
-  let renderW, renderH, offX, offY;
-  if (containerRatio > targetRatio) {
-    renderH = cssH;
-    renderW = Math.round(cssH * targetRatio);
-    offX = (cssW - renderW) / 2;
-    offY = 0;
+  // canvas 全屏铺满
+  cv.width = Math.round(cssW * dpr);
+  cv.height = Math.round(cssH * dpr);
+  cv.style.width = cssW + 'px';
+  cv.style.height = cssH + 'px';
+  cv.style.left = '0px';
+  cv.style.top = '0px';
+  // 逻辑分辨率：以短边 480 为基准，保证 UI 物理大小在横竖屏下一致
+  const baseSize = 480;
+  if (cssW <= cssH) {
+    viewW = baseSize;
+    viewH = Math.round(baseSize * cssH / cssW);
   } else {
-    renderW = cssW;
-    renderH = Math.round(cssW / targetRatio);
-    offX = 0;
-    offY = (cssH - renderH) / 2;
+    viewH = baseSize;
+    viewW = Math.round(baseSize * cssW / cssH);
   }
-  cv.width = Math.round(renderW * dpr);
-  cv.height = Math.round(renderH * dpr);
-  cv.style.width = renderW + 'px';
-  cv.style.height = renderH + 'px';
-  cv.style.left = offX + 'px';
-  cv.style.top = offY + 'px';
-  // 逻辑分辨率固定为竖屏 480x854（9:16），UI/世界全部按竖屏设计
-  viewW = 480;
-  viewH = Math.round(viewW / targetRatio);
   window.__sx = cv.width / viewW;
   window.__sy = cv.height / viewH;
-  window.__scale = renderH / viewH;
+  window.__scale = cssH / viewH;
   window.__offX = 0; window.__offY = 0;
   // 屏幕大小地图随屏幕尺寸更新
   if (typeof applyMapSize === 'function') applyMapSize(true);
   applyCameraTransform();
-  // 横屏提示
-  const rotate = document.getElementById('rotate');
-  if (rotate) rotate.style.display = isLandscape ? 'flex' : 'none';
-  // 尝试锁定竖屏（PWA 安装后有效）
-  if (screen.orientation && screen.orientation.lock && isTouch) {
-    screen.orientation.lock('portrait').catch(() => {});
-  }
 }
 function updateCamera(px, py) {
   camX = px - viewW / 2;
@@ -1028,32 +1004,40 @@ function drawTouchUI() {
   // 始终在触屏设备上显示虚拟摇杆（逻辑坐标，与 HUD 一致）
   if (!isTouch && !touchInput.active) return;
   const sw = viewW, sh = viewH;
-  const baseX = 90, baseY = sh - 90;
+  const isLandscape = sw > sh;
+  // 按钮大小随屏幕高度自适应，横屏时略缩小
+  const scale = isLandscape ? Math.min(1, sh / 540) : 1;
+  const joyR = 54 * scale, knobR = 24 * scale;
+  const fireR = 48 * scale, dashR = 34 * scale;
+  // 位置：距离边缘用相对比例，横竖屏均合理
+  const marginX = sw * (isLandscape ? 0.07 : 0.19);
+  const marginY = sh * (isLandscape ? 0.16 : 0.11);
+  const baseX = marginX, baseY = sh - marginY;
   if (joyMove.active) {
     const r = cv.getBoundingClientRect();
     const lx = (joyMove.cx / Math.max(r.width, 1)) * viewW;
     const ly = (joyMove.cy / Math.max(r.height, 1)) * viewH;
     ctx.globalAlpha = .28;
     ctx.fillStyle = '#000';
-    ctx.beginPath(); ctx.arc(lx, ly, 54, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(lx, ly, joyR, 0, 7); ctx.fill();
     ctx.globalAlpha = .55;
     ctx.fillStyle = '#fff';
-    const d = Math.min(Math.hypot(joyMove.dx, joyMove.dy), 42);
+    const d = Math.min(Math.hypot(joyMove.dx, joyMove.dy), knobR * 1.75);
     const a = Math.atan2(joyMove.dy, joyMove.dx);
-    ctx.beginPath(); ctx.arc(lx + Math.cos(a) * d, ly + Math.sin(a) * d, 24, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(lx + Math.cos(a) * d, ly + Math.sin(a) * d, knobR, 0, 7); ctx.fill();
     ctx.globalAlpha = 1;
   } else {
     ctx.globalAlpha = .22;
     ctx.fillStyle = '#000';
-    ctx.beginPath(); ctx.arc(baseX, baseY, 54, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(baseX, baseY, joyR, 0, 7); ctx.fill();
     ctx.globalAlpha = .45;
     ctx.fillStyle = '#fff';
-    ctx.beginPath(); ctx.arc(baseX, baseY, 24, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(baseX, baseY, knobR, 0, 7); ctx.fill();
     ctx.globalAlpha = 1;
     ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.font = 'bold 14px system-ui'; ctx.textAlign = 'center';
-    ctx.fillText('移动', baseX, baseY + 48);
+    ctx.fillText('移动', baseX, baseY + joyR + 18);
   }
-  const fb = { x: sw - 90, y: sh - 90, r: 48 };
+  const fb = { x: sw - marginX, y: sh - marginY, r: fireR };
   ctx.globalAlpha = joyFire.active ? .6 : .32;
   ctx.fillStyle = joyFire.active ? '#ffeb3b' : '#000';
   ctx.beginPath(); ctx.arc(fb.x, fb.y, fb.r, 0, 7); ctx.fill();
@@ -1066,11 +1050,11 @@ function drawTouchUI() {
   ctx.moveTo(fb.x - cr, fb.y); ctx.lineTo(fb.x + cr, fb.y);
   ctx.moveTo(fb.x, fb.y - cr); ctx.lineTo(fb.x, fb.y + cr);
   ctx.stroke();
-  const db = { x: sw - 175, y: sh - 70, r: 34 };
+  const db = { x: sw - marginX - fireR - dashR - 16, y: sh - marginY + fireR * 0.35, r: dashR };
   ctx.globalAlpha = .32; ctx.fillStyle = '#81d4fa';
   ctx.beginPath(); ctx.arc(db.x, db.y, db.r, 0, 7); ctx.fill();
   ctx.globalAlpha = 1;
-  ctx.fillStyle = '#fff'; ctx.font = 'bold 13px system-ui';
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 13px system-ui'; ctx.textAlign = 'center';
   ctx.fillText('冲刺', db.x, db.y + 5);
 }
 
@@ -1083,18 +1067,28 @@ cv.addEventListener('touchstart', e => {
   for (const t of e.changedTouches) {
     const s = touchScreen(t);
     const w = touchWorld(t);
+    const isLand = s.rw > s.rh;
+    const marginX = s.rw * (isLand ? 0.07 : 0.19);
+    const marginY = s.rh * (isLand ? 0.16 : 0.11);
+    const scale = isLand ? Math.min(1, s.rh / 540) : 1;
+    const fireR = 48 * scale, dashR = 34 * scale;
+    // 射击按钮中心
+    const fireX = s.rw - marginX, fireY = s.rh - marginY;
+    // 冲刺按钮中心
+    const dashX = s.rw - marginX - fireR - dashR - 16;
+    const dashY = s.rh - marginY + fireR * 0.35;
     if (s.x < s.rw / 2 && !joyMove.active) {
       joyMove.active = true; joyMove.id = t.identifier;
       joyMove.cx = s.x; joyMove.cy = s.y; joyMove.dx = 0; joyMove.dy = 0;
     } else {
-      const fd = dist2(s.x, s.y, s.rw - 100, s.rh - 100);
-      const dd = dist2(s.x, s.y, s.rw - 190, s.rh - 70);
-      if (dd < 40 * 40 && !touchInput.dashReq) {
+      const fd = dist2(s.x, s.y, fireX, fireY);
+      const dd = dist2(s.x, s.y, dashX, dashY);
+      if (dd < (dashR + 12) * (dashR + 12) && !touchInput.dashReq) {
         touchInput.dashReq = true;
         setTimeout(() => touchInput.dashReq = false, 100);
         keys['shift'] = true;
         setTimeout(() => keys['shift'] = false, 60);
-      } else if (fd < 70 * 70) {
+      } else if (fd < (fireR + 18) * (fireR + 18)) {
         joyFire.active = true; joyFire.id = t.identifier;
         touchInput.fire = true; touchInput.aimActive = true;
         touchInput.ax = w.x; touchInput.ay = w.y;
