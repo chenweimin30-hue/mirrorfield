@@ -10,7 +10,7 @@
 <link rel="manifest" href="manifest.json">
 <title>镜原 Mirrorfield · 联机版</title>
 <style>
-  html,body{margin:0;padding:0;width:100%;height:100%;height:100dvh;background:#2e3b2a;font-family:system-ui,"Segoe UI","Microsoft YaHei",sans-serif;
+  html,body{margin:0;padding:0;width:100%;height:100%;height:100dvh;background:#7cb342;font-family:system-ui,"Segoe UI","Microsoft YaHei",sans-serif;
             overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;
             position:fixed;inset:0;}
   #wrap{position:fixed;inset:0;width:100%;height:100%;display:block;}
@@ -728,26 +728,42 @@ function getMoveInput() {
   if (keys['d'] || keys['arrowright']) x++;
   return { x, y, dash: keys['shift'] };
 }
+// 自动瞄准粘性锁定：避免多敌人间快速跳跃
+let autoAimTarget = null;
 function getAimInput() {
   if (touchInput.active && touchInput.aimActive) return { x: touchInput.ax, y: touchInput.ay };
-  // 手机触屏且未手动瞄准时，自动锁定最近敌人
+  // 手机触屏且未手动瞄准时，自动锁定最近敌人（带粘性）
   if (touchInput.active) {
-    let tx = null, ty = null, best = 1e9;
     const me = mode === 'net' ? netMe : player;
+    const targets = [];
     if (mode === 'net') {
       for (const rp of netPlayers.values()) {
-        if (!rp.alive) continue;
-        const d = dist2(rp.x, rp.y, me.x, me.y);
-        if (d < best) { best = d; tx = rp.x; ty = rp.y; }
+        if (rp.alive) targets.push({ x: rp.x, y: rp.y, ref: rp });
       }
     } else {
       for (const enemy of enemies) {
-        if (!enemy.alive) continue;
-        const d = dist2(enemy.x, enemy.y, me.x, me.y);
-        if (d < best) { best = d; tx = enemy.x; ty = enemy.y; }
+        if (enemy.alive) targets.push({ x: enemy.x, y: enemy.y, ref: enemy });
       }
     }
-    if (tx !== null) return { x: tx, y: ty };
+    if (targets.length > 0) {
+      // 计算每个目标的距离
+      for (const t of targets) {
+        t.dist = dist2(t.x, t.y, me.x, me.y);
+      }
+      targets.sort((a, b) => a.dist - b.dist);
+      const nearest = targets[0];
+      // 粘性逻辑：当前目标还活着且没有比最近敌人远50%以上，就继续锁定
+      if (autoAimTarget && targets.includes(autoAimTarget)) {
+        if (autoAimTarget.dist <= nearest.dist * 1.5) {
+          return { x: autoAimTarget.x, y: autoAimTarget.y };
+        }
+      }
+      // 否则切换到最近敌人
+      autoAimTarget = nearest;
+      return { x: nearest.x, y: nearest.y };
+    } else {
+      autoAimTarget = null;
+    }
   }
   return { x: mouse.x, y: mouse.y };
 }
@@ -1046,7 +1062,7 @@ function render() {
       ctx.fillStyle = f.color; ctx.fillText(f.txt, f.x, f.y);
     }
     ctx.globalAlpha = 1;
-    if (mode !== 'net' && state === 'playing') drawCrosshair();
+    if (mode !== 'net' && state === 'playing') { /* drawCrosshair(); */ }
 
     // UI 层：不受镜头影响（屏幕坐标 / 可视窗口坐标）
     const sx = window.__sx || 1, sy = window.__sy || 1;
@@ -1230,9 +1246,16 @@ function autoAim() {
 
 /* ---------- 主循环 ---------- */
 let frameCount = 0;
+let lastW = 0, lastH = 0;
 function loop() {
   requestAnimationFrame(loop);
   frameCount++;
+  // 每帧检测窗口尺寸变化（沉浸式全屏生效后自动重算）
+  const cw = window.innerWidth || 0, ch = window.innerHeight || 0;
+  if (cw !== lastW || ch !== lastH) {
+    lastW = cw; lastH = ch;
+    fit();
+  }
   if (state === 'countdown') {
     countdownLeft = Math.max(0, countdownLeft - 1 / 60);
     if (snapCur) netApplySnapshot();
